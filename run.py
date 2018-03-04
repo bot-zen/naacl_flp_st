@@ -373,6 +373,16 @@ class Utils():
         return loss
 
 def main():
+    import logging
+
+    from keras.models import Model, Input
+    from keras.layers import AveragePooling1D, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+    from sklearn.model_selection import KFold
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logging.debug("test")
+
     if len(argv) == 1:
         corpus_fn = "../naacl_flp/vuamc_corpus_train.csv"
         tokens_tags = "../naacl_flp/all_pos_tokens.csv"
@@ -380,21 +390,49 @@ def main():
         corpus_fn = argv[1]
 
     corpus = Corpus(corpus_fn, tokens_tags)
-
-    vuamc_corpus = pd.read_csv(corpus_fn, encoding="utf-8")
-    toks_tags = pd.read_csv(tokens_tags, encoding="utf-8")
+    # vuamc_corpus = pd.read_csv(corpus_fn, encoding="utf-8")
+    # toks_tags = pd.read_csv(tokens_tags, encoding="utf-8")
 
     models = []
-    models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
+    #models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
+    #models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
+    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high.bin'))
+    feature_vec_length = sum([model.vector_size for model in models])
 
+    X,y = Utils.X_y(corpus, models)
 
-    #sentences = SentenceGetter(vuamc_corpus)
-    #for s in sentences:
-    #    print(s[1])
+    seed = 42
+    n_splits = 3
+    seq_max_length = 50
+    # loss = Utils.weighted_categorical_crossentropy([1,1])
+    loss = "categorical_crossentropy"
+    # f1 = Utils.f1
+    # metrics = [f1]
+    metrics = ["accuracy"]
+    batch_size = 32
+    epochs = 5
+
+    # define 10-fold cross validation test harness
+    kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+
+    cvscores = []
+    for train, test in kfold.split(X, y):
+        # Create Model
+        inputs = Input(shape=(seq_max_length,feature_vec_length,))
+        model = Bidirectional(LSTM(100, return_sequences=True, recurrent_dropout=0.1))(inputs)
+        model = Flatten()(model)
+        outputs = Dense(seq_max_length, activation="hard_sigmoid")(model)
+        model = Model(inputs=inputs, outputs=outputs)
+
+        model.compile(optimizer="rmsprop", loss=loss, metrics=metrics)
+        model.fit(np.array(X)[train], np.array(y)[train], batch_size=batch_size, epochs=epochs, verbose=1)
+
+        # evaluate the model
+        scores = model.evaluate(np.array(X)[test], np.array(y)[test], verbose=0)
+
+        print("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+        cvscores.append(scores[1] * 100)
+    print("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
 
 if __name__ == "__main__":
-    # import logging
-    # logger = logging.getLogger()
-    # logger.setLevel(logging.DEBUG)
-    # logging.debug("test")
     main()
