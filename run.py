@@ -273,10 +273,10 @@ class Utils():
             for tmp_id, sentence_toks_pad in enumerate(sentence_toks_pads):
                 sentence_retval = []
                 for model in models:
-                    sentence_retval.append(Utils.toks2feat(sentence_toks_pad, model))
-
-                if len(models) > 1:
-                    sentence_retval = list(map((lambda *args: np.hstack([*args])), *sentence_retval))
+                    sentence_retval.extend(Utils.toks2feat(sentence_toks_pad, model))
+                # FIXME: implement 
+                #if len(models) > 1:
+                #    sentence_retval = list(map((lambda *args: np.hstack([*args])), *sentence_retval))
 
                 retval_X.append(np.array(sentence_retval))
                 retval_y.append(np.array(sentence_ys_pads[tmp_id]))
