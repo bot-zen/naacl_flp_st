@@ -207,7 +207,7 @@ class Utils():
 
                 if subst in model:
                     feat_token = subst
-                    log.debug("Token   : '%s' substituted with '%s'", token, feat_token)
+                    log.info("Token   : '%s' substituted with '%s'", token, feat_token)
 
             if not feat_token:
                 # the token is not in the model -> 'guess' the most likely word
@@ -226,14 +226,14 @@ class Utils():
                     if post_toks:
                         context_toks.append(post_toks.pop(0))
 
-                log.debug("'%s'    : not in model:%s", token, str(model))
+                log.info("'%s'    : not in model:%s", token, str(model))
                 log.debug("Tokens  : %s", str(toks))
                 log.debug("pre/post: %s | %s", str(pre_toks), str(post_toks))
                 log.debug("Context : %s", str(context_toks))
 
                 if context_toks:
                     feat_token = model.most_similar(context_toks, topn=1)[0][0]
-                    log.debug("Token   : '%s' substituted with '%s'", token, feat_token)
+                    log.info("Token   : '%s' substituted with '%s'", token, feat_token)
 
             if token == Utils.padding_str:
                 retval.append(model.vector_size * [0])
