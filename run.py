@@ -209,7 +209,7 @@ class Utils():
                     feat_token = subst
                     log.info("Token   : '%s' substituted with '%s'", token, feat_token)
 
-            if not feat_token:
+            if not feat_token and not token == Utils.padding_str:
                 # the token is not in the model -> 'guess' the most likely word
                 # given a context_length context, and use this word
 
