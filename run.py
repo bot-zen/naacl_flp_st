@@ -284,6 +284,31 @@ class Utils():
         return retval_X, retval_y
 
     @staticmethod
+    def f1_score_least_frequent(y_true, y_pred):
+        """
+        Calculate the F1 score of the least frequent label/class in ``y_true`` for
+        ``y_pred``.
+
+        Parameters
+        ----------
+        y_true : array-like of float
+            The true/actual/gold labels for the data.
+        y_pred : array-like of float
+            The predicted/observed labels for the data.
+
+        Returns
+        -------
+        ret_score : float
+            F1 score of the least frequent label.
+
+        from:
+            https://raw.githubusercontent.com/EducationalTestingService/skll/master/skll/metrics.py
+        """
+        from sklearn.metrics import f1_score
+        least_frequent = np.bincount(y_true).argmin()
+        return f1_score(y_true, y_pred, average=None)[least_frequent]
+
+    @staticmethod
     def get_class_weights(y, smooth_factor=0):
         """
         Returns the weights for each class based on the frequencies of the samples
