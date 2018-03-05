@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Author: egon w. stemle <egon.stemle@eurac.edu>
 Contributor: alexander onysko <alexander.onysko@aau.at>
