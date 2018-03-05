@@ -398,6 +398,22 @@ class Utils():
 
         return loss
 
+    @staticmethod
+    def weighted_loss(onehot_labels, logits):
+        """ Scale loss based on class weights. """
+        # # compute weights based on their frequencies
+        # class_weights = .... # set your class weights here
+        # # computer weights based on onehot labels
+        # weights = tf.reduce_sum(class_weights * onehot_labels, axis=-1)
+        # # compute (unweighted) softmax cross entropy loss
+        # unweighted_losses = tf.nn.softmax_cross_entropy_with_logits(labels=[onehot_labels], logits=[logits])
+        # # apply the weights, relying on broadcasting of the multiplication
+        # weighted_losses = unweighted_losses * weights
+        # # reduce the result to get your final loss
+        # loss = tf.reduce_mean(weighted_losses)
+        # return loss
+        pass
+
 def main():
     import logging
 
