@@ -417,8 +417,12 @@ class Utils():
 def main():
     import logging
 
+    from keras import backend as K
+    from keras.layers import Masking, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
     from keras.models import Model, Input
-    from keras.layers import AveragePooling1D, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+    from keras.utils import to_categorical
+
+    import sklearn
     from sklearn.model_selection import KFold
 
     logger = logging.getLogger()
@@ -437,44 +441,82 @@ def main():
 
     models = []
     #models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
-    #models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
-    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high.bin'))
+    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
+    #models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high.bin'))
     feature_vec_length = sum([model.vector_size for model in models])
 
-    X,y = Utils.X_y(corpus, models)
+    X, y = Utils.X_y(corpus, models)
 
     seed = 42
+    #
     n_splits = 3
+    batch_size = 16 # 32
+    epochs = 3 # 5
+    #
     seq_max_length = 50
+    #
     # loss = Utils.weighted_categorical_crossentropy([1,1])
+
     loss = "categorical_crossentropy"
-    # f1 = Utils.f1
-    # metrics = [f1]
+    y_cat = to_categorical(y, 2)
+    #
+    #loss = "binary_crossentropy"
+    #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
+    #
+    #f1 = Utils.f1_score_least_frequent
+    #metrics = [f1]
     metrics = ["accuracy"]
-    batch_size = 32
-    epochs = 5
 
     # define 10-fold cross validation test harness
     kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
     cvscores = []
-    for train, test in kfold.split(X, y):
+    prfsscores = []
+    labels_preds = []
+    labels_y = []
+    for train, test in kfold.split(X, y_cat):
+        #sample_weight = y_cat[train] * 100
+        #sample_weight = sample_weight.reshape(len(y_cat[train]), 100)
+
         # Create Model
-        inputs = Input(shape=(seq_max_length,feature_vec_length,))
-        model = Bidirectional(LSTM(100, return_sequences=True, recurrent_dropout=0.1))(inputs)
-        model = Flatten()(model)
-        outputs = Dense(seq_max_length, activation="hard_sigmoid")(model)
+        inputs = Input(shape=(seq_max_length, feature_vec_length,))
+        model = Masking(mask_value=[0]*feature_vec_length)(inputs)
+        model = Bidirectional(LSTM(100, return_sequences=True,
+                                   recurrent_dropout=0.1))(model)
+        #model = Flatten()(model)
+        #outputs = Dense(seq_max_length, activation="sigmoid")(model)
+        outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
+        #outputs = TimeDistributed(Dense(1, activation="sigmoid"))(model)
         model = Model(inputs=inputs, outputs=outputs)
 
         model.compile(optimizer="rmsprop", loss=loss, metrics=metrics)
-        model.fit(np.array(X)[train], np.array(y)[train], batch_size=batch_size, epochs=epochs, verbose=1)
+        model.fit(np.array(X)[train], y_cat[train],
+                  batch_size=batch_size, epochs=epochs, verbose=1)
 
+        ###
         # evaluate the model
-        scores = model.evaluate(np.array(X)[test], np.array(y)[test], verbose=0)
+        x_test = np.array(X)[test]
+        #
+        scores = model.evaluate(x_test, y_cat[test], verbose=0)
+        #
+        p = model.predict(x_test, batch_size=batch_size)
+        q = K.argmax(p)
+        r = K.eval(q)
+        for xt_id, xt in enumerate(x_test):
+            dims = len(xt[np.all(xt, axis = 1)])
+            ##prfsscores.append(sklearn.metrics.precision_recall_fscore_support(np.array(y)[test][xt_id][:dims], r[xt_id][:dims]))
+            labels_preds.extend(r[xt_id][:dims])
+            labels_y.extend(np.array(y)[test][xt_id][:dims])
+            #prfsscores.append(
+            #    sklearn.metrics.precision_recall_fscore_support(
+            #        np.array(y)[test][xt_id][:dims], p))
 
         print("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
         cvscores.append(scores[1] * 100)
     print("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
+    #print(sklearn.metrics.confusion_matrix(labels_y, labels_preds))
+    #print(np.mean([f[2] for f in prfsscores]))
+    print(Utils.f1_score_least_frequent(labels_y, labels_preds))
 
 if __name__ == "__main__":
     main()
