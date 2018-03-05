@@ -418,7 +418,7 @@ def main():
     import logging
 
     from keras import backend as K
-    from keras.layers import Masking, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+    from keras.layers import Masking, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional, concatenate
     from keras.models import Model, Input
     from keras.utils import to_categorical
 
@@ -440,12 +440,14 @@ def main():
     # toks_tags = pd.read_csv(tokens_tags, encoding="utf-8")
 
     models = []
-    #models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
+    models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
     models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
     #models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high.bin'))
-    feature_vec_length = sum([model.vector_size for model in models])
 
-    X, y = Utils.X_y(corpus, models)
+    X0, y = Utils.X_y(corpus, [models[0]])
+    X1, _ = Utils.X_y(corpus, [models[1]])
+    feature_vec_length0 = sum([model.vector_size for model in [models[0]]])
+    feature_vec_length1 = sum([model.vector_size for model in [models[1]]])
 
     seed = 42
     #
@@ -474,35 +476,41 @@ def main():
     prfsscores = []
     labels_preds = []
     labels_y = []
-    for train, test in kfold.split(X, y_cat):
+    for train, test in kfold.split(X0, y_cat):
         #sample_weight = y_cat[train] * 100
         #sample_weight = sample_weight.reshape(len(y_cat[train]), 100)
 
         # Create Model
-        inputs = Input(shape=(seq_max_length, feature_vec_length,))
-        model = Masking(mask_value=[0]*feature_vec_length)(inputs)
+        input0 = Input(shape=(seq_max_length, feature_vec_length0,))
+        model0 = Masking(mask_value=[0]*feature_vec_length0)(input0)
+
+        input1 = Input(shape=(seq_max_length, feature_vec_length1,))
+        model1 = Masking(mask_value=[0]*feature_vec_length1)(input1)
+
+        model = concatenate([input0, input1])
         model = Bidirectional(LSTM(100, return_sequences=True,
                                    recurrent_dropout=0.1))(model)
         #model = Flatten()(model)
         #outputs = Dense(seq_max_length, activation="sigmoid")(model)
         outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
         #outputs = TimeDistributed(Dense(1, activation="sigmoid"))(model)
-        model = Model(inputs=inputs, outputs=outputs)
+        model = Model(inputs=[input0, input1], outputs=outputs)
 
         model.compile(optimizer="rmsprop", loss=loss, metrics=metrics)
-        model.fit(np.array(X)[train], y_cat[train],
+        model.fit([np.array(X0)[train], np.array(X1)[train]], y_cat[train],
                   batch_size=batch_size, epochs=epochs, verbose=1)
 
         ###
         # evaluate the model
-        x_test = np.array(X)[test]
+        x0_test = np.array(X0)[test]
+        x1_test = np.array(X1)[test]
         #
-        scores = model.evaluate(x_test, y_cat[test], verbose=0)
+        scores = model.evaluate([x0_test, x1_test], y_cat[test], verbose=0)
         #
-        p = model.predict(x_test, batch_size=batch_size)
+        p = model.predict([x0_test, x1_test], batch_size=batch_size)
         q = K.argmax(p)
         r = K.eval(q)
-        for xt_id, xt in enumerate(x_test):
+        for xt_id, xt in enumerate(x0_test):
             dims = len(xt[np.all(xt, axis = 1)])
             ##prfsscores.append(sklearn.metrics.precision_recall_fscore_support(np.array(y)[test][xt_id][:dims], r[xt_id][:dims]))
             labels_preds.extend(r[xt_id][:dims])
