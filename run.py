@@ -562,20 +562,88 @@ def main():
         q = K.argmax(p)
         r = K.eval(q)
         for xt_id, xt in enumerate(x0_test):
-            dims = len(xt[np.all(xt, axis = 1)])
-            ##prfsscores.append(sklearn.metrics.precision_recall_fscore_support(np.array(y)[test][xt_id][:dims], r[xt_id][:dims]))
+            dims = len(xt[np.all(xt, axis=1)])
             labels_preds.extend(r[xt_id][:dims])
             labels_y.extend(np.array(y)[test][xt_id][:dims])
-            #prfsscores.append(
-            #    sklearn.metrics.precision_recall_fscore_support(
-            #        np.array(y)[test][xt_id][:dims], p))
+    logging.info("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
+    logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
 
-        print("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
-        cvscores.append(scores[1] * 100)
-    print("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
-    #print(sklearn.metrics.confusion_matrix(labels_y, labels_preds))
-    #print(np.mean([f[2] for f in prfsscores]))
-    print(Utils.f1_score_least_frequent(labels_y, labels_preds))
+    exit(0)
+    ### PREDICT
+    ###
+    # Re-init the model
+    model = get_model()
+    model.fit([np.array(X0),
+               np.array(X1),
+               np.array(X2)
+              ], y_cat,
+              batch_size=batch_size, epochs=epochs, verbose=0)
+
+    corpus_test_fn = "../naacl_flp/vuamc_corpus_test.csv"
+    tokens_test_tags = "../naacl_flp/all_pos_tokens_test.csv"
+    corpus_test = Corpus(corpus_test_fn, tokens_test_tags, mode="test")
+
+    x0_pred = []
+    x1_pred = []
+    x2_pred = []
+    for txt_id in corpus_test.tokens:
+        for sentence_id in corpus_test.tokens[txt_id]:
+            sentence = corpus_test.sentence(txt_id, sentence_id)
+
+            x0_pred.extend(Corpus.X_y_sentence(sentence=sentence,
+                                               model=models[0],
+                                               maxlen=seq_max_length)[0])
+            x1_pred.extend(Corpus.X_y_sentence(sentence=sentence,
+                                               model=models[1],
+                                               maxlen=seq_max_length)[0])
+            x2_pred.extend(Corpus.X_y_sentence(sentence=sentence,
+                                               model=models[2],
+                                               maxlen=seq_max_length)[0])
+
+    y_preds = []
+    p = model.predict([np.array(x0_pred),
+                       np.array(x1_pred),
+                       np.array(x2_pred)], batch_size=batch_size)
+    q = K.argmax(p)
+    y_preds = K.eval(q)
+
+    pred_id = 0
+    for txt_id in corpus_test.tokens:
+        for sentence_id in corpus_test.tokens[txt_id]:
+            sentence = corpus_test.sentence(txt_id, sentence_id)
+            tokens = corpus_test.tokens[txt_id][sentence_id]
+            for tok_id in range(len(sentence)):
+                y_pred = y_preds[pred_id]
+                if tok_id+1 in tokens:
+                    # print(pred_id, tok_id, tok_id%seq_max_length)
+                    logging.info("{}_{}_{},{},{}".format(txt_id, sentence_id,
+                                                  tok_id+1, y_pred[tok_id %
+                                                                   seq_max_length],
+                                                  sentence[tok_id][0]))
+                if (tok_id+1) % seq_max_length == 0 and tok_id+1 < len(sentence):
+                    pred_id += 1
+            pred_id += 1
+
+            #X0_sent, _ = Corpus.X_y_sentence(
+            #    sentence=sentence, model=models[0], maxlen=seq_max_length)
+            #X1_sent, _ = Corpus.X_y_sentence(
+            #    sentence=sentence, model=models[1], maxlen=seq_max_length)
+
+            #y_preds = []
+            #for sent_id, sent in enumerate(X0_sent):
+            #    p = model.predict([np.array([X0_sent[sent_id]]),
+            #                       np.array([X1_sent[sent_id]])], batch_size=batch_size)
+            #    q = K.argmax(p)
+            #    r = K.eval(q)
+            #    y_preds.extend(r)
+            #y_preds = np.array(y_preds).flatten()
+
+            #tokens = corpus_test.tokens[txt_id][sentence_id]
+            #for tok_id in range(len(sentence)):
+            #    if tok_id+1 in tokens:
+            #        print("{}_{}_{},{},{}".format(txt_id, sentence_id,
+            #                                      tok_id+1, y_preds[tok_id],
+            #                                      sentence[tok_id][0]))
 
 if __name__ == "__main__":
     main()
