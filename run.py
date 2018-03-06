@@ -154,6 +154,17 @@ class Corpus():
                     assert (self.tokens[txt_id][sentence_id][token_id] ==
                             self.vuamc[txt_id][sentence_id]['labels'][token_id])
 
+    def sentence(self, txt_id, sentence_id):
+        sentence = []
+        for token_id in self.vuamc[txt_id][sentence_id]['tokens'].keys():
+            if token_id in self.tokens[txt_id][sentence_id]:
+                label = self.tokens[txt_id][sentence_id][token_id]
+            else:
+                label = 0
+            sentence.append((self.vuamc[txt_id][sentence_id]['tokens'][token_id],
+                             label))
+        return sentence
+
     @property
     def sentences(self):
         """ Yield list (sentences) of tuples (word, label). """
@@ -161,19 +172,49 @@ class Corpus():
             """ Helper to populate sentences. """
             for txt_id in self.tokens:
                 for sentence_id in self.tokens[txt_id]:
-                    sentence = []
-                    for token_id in self.vuamc[txt_id][sentence_id]['tokens'].keys():
-                        if token_id in self.tokens[txt_id][sentence_id]:
-                            label = self.tokens[txt_id][sentence_id][token_id]
-                        else:
-                            label = 0
-                        sentence.append((self.vuamc[txt_id][sentence_id]['tokens'][token_id],
-                                         label))
-                    yield sentence
+                    yield self.sentence(txt_id, sentence_id)
         if self._sentences is None:
             self._sentences = list(populate_sentences())
 
         return self._sentences
+
+    @staticmethod
+    def X_y_sentence(model, sentence, maxlen=None):
+        retval_X = []
+        retval_y = []
+        # ..._pads: list of padded entried - multiple if len(toks) > max_len
+        sentence_toks_pads = Utils.pad_toks([tok[0] for tok in sentence],
+                                            maxlen=maxlen)
+        sentence_ys_pads = Utils.pad_toks([tok[1] for tok in sentence],
+                                          value=0, maxlen=maxlen)
+        for tmp_id, sentence_toks_pad in enumerate(sentence_toks_pads):
+            sentence_retval = []
+            sentence_retval.extend(Utils.toks2feat(sentence_toks_pad, model))
+            retval_X.append(np.array(sentence_retval))
+            retval_y.append(np.array(sentence_ys_pads[tmp_id]))
+        return retval_X, retval_y
+
+    def X_y(self, model, sentence=None, maxlen=None):
+        retval_X = []
+        retval_y = []
+        if sentence is None:
+            sentences = self.sentences
+        else:
+            sentences = [sentence]
+
+        for sent in sentences:
+            X, y = Corpus.X_y_sentence(model, sent, maxlen=maxlen)
+            retval_X.extend(X)
+            retval_y.extend(y)
+        return retval_X, retval_y
+
+    def X(self, model):
+        X, _ = self.X_y(model)
+        return X
+
+    def y(self, model):
+        _, y = self.X_y(model)
+        return y
 
 class Utils():
     """ Utility and helper functions. """
@@ -217,7 +258,7 @@ class Utils():
 
                 if subst in model:
                     feat_token = subst
-                    log.info("Token   : '%s' substituted with '%s'", token, feat_token)
+                    log.debug("Token   : '%s' substituted with '%s'", token, feat_token)
 
             if not feat_token and not token == Utils.padding_str:
                 # the token is not in the model -> 'guess' the most likely word
@@ -272,25 +313,25 @@ class Utils():
         else:
             return toks
 
-    @staticmethod
-    def X_y(corpus, models):
-        retval_X = []
-        retval_y = []
-        for sentence in corpus.sentences:
-            sentence_toks_pads = Utils.pad_toks([tok[0] for tok in sentence])
-            sentence_ys_pads = Utils.pad_toks([tok[1] for tok in sentence], value=0)
+    # @staticmethod
+    # def X_y(corpus, models):
+    #     retval_X = []
+    #     retval_y = []
+    #     for sentence in corpus.sentences:
+    #         sentence_toks_pads = Utils.pad_toks([tok[0] for tok in sentence])
+    #         sentence_ys_pads = Utils.pad_toks([tok[1] for tok in sentence], value=0)
 
-            for tmp_id, sentence_toks_pad in enumerate(sentence_toks_pads):
-                sentence_retval = []
-                for model in models:
-                    sentence_retval.extend(Utils.toks2feat(sentence_toks_pad, model))
-                # FIXME: implement 
-                #if len(models) > 1:
-                #    sentence_retval = list(map((lambda *args: np.hstack([*args])), *sentence_retval))
+    #         for tmp_id, sentence_toks_pad in enumerate(sentence_toks_pads):
+    #             sentence_retval = []
+    #             for model in models:
+    #                 sentence_retval.extend(Utils.toks2feat(sentence_toks_pad, model))
+    #             # FIXME: implement 
+    #             #if len(models) > 1:
+    #             #    sentence_retval = list(map((lambda *args: np.hstack([*args])), *sentence_retval))
 
-                retval_X.append(np.array(sentence_retval))
-                retval_y.append(np.array(sentence_ys_pads[tmp_id]))
-        return retval_X, retval_y
+    #             retval_X.append(np.array(sentence_retval))
+    #             retval_y.append(np.array(sentence_ys_pads[tmp_id]))
+    #     return retval_X, retval_y
 
     @staticmethod
     def f1_score_least_frequent(y_true, y_pred):
