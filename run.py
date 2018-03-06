@@ -440,14 +440,14 @@ def main():
 
     models = []
     models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
-    # models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
+    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
     # models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
-    models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
     models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med-high.bin'))
 
     #
     # seq_max_length = 50
-    seq_max_length = 10
+    seq_max_length = 10  # !
+    # seq_max_length = 15
 
     X0, y = corpus.X_y(models[0], maxlen=seq_max_length)
     X1, _ = corpus.X_y(models[1], maxlen=seq_max_length)
@@ -460,10 +460,13 @@ def main():
     #
     n_splits = 3
     batch_size = 16
-    # batch_size = 32
+    # batch_size = 32  # !
+    # batch_size = 64
 
     epochs = 3
     # epochs = 5
+    # epochs = 20  # !
+    # epochs = 32
 
     #
     #recurrent_dropout=0.1
@@ -472,33 +475,26 @@ def main():
 
     #
     # cf. http://ruder.io/optimizing-gradient-descent/
-    optimizer="rmsprop"  # !
-    #optimizer="adadelta"
-    #optimizer="adam"
+    optimizer = "rmsprop"  # !
+    #optimizer = "adadelta"
+    #optimizer = "adam"
     #
-    loss = Utils.weighted_categorical_crossentropy([1,5])  # !
+    loss = Utils.weighted_categorical_crossentropy([1, 5])  # !
     #loss = "categorical_crossentropy"
     y_cat = to_categorical(y, 2)
     #
     #loss = "binary_crossentropy"
     #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
     #
-    #f1 = Utils.f1_score_least_frequent
+    # f1 = Utils.f1
+    # metrics = ["categorical_accuracy", f1]
     metrics = ["categorical_accuracy"]
 
-    # define 10-fold cross validation test harness
-    kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
-    cvscores = []
-    prfsscores = []
-    labels_preds = []
-    labels_y = []
-    for train, test in kfold.split(X0, y_cat):
-        #sample_weight = y_cat[train] * 100
-        #sample_weight = sample_weight.reshape(len(y_cat[train]), 100)
+    def get_model():
+        """ Create and return the model. """
 
-
-        # Create Model
+        # INPUTS
         input0 = Input(shape=(seq_max_length, feature_vec_length0,))
         model0 = Masking(mask_value=[0]*feature_vec_length0)(input0)
 
@@ -508,31 +504,48 @@ def main():
         input2 = Input(shape=(seq_max_length, feature_vec_length2,))
         model2 = Masking(mask_value=[0]*feature_vec_length2)(input2)
 
-
+        # Combinde INPUTS (including masks)
         model = concatenate([model0,
                              model1,
-                             model2])
+                             model2
+                            ])
+
+        # CORE MODEL
         model = Bidirectional(LSTM(32, return_sequences=True,
                                    recurrent_dropout=recurrent_dropout))(model)
-        #model = Bidirectional(LSTM(100, return_sequences=True,
-        #                           recurrent_dropout=recurrent_dropout))(model)
-        #model = Flatten()(model)
-        #outputs = Dense(seq_max_length, activation="sigmoid")(model)
+
+        # (unfold LSTM and)
+        # one-hot encode binary label
         outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
-        #outputs = TimeDistributed(Dense(1, activation="sigmoid"))(model)
+
         model = Model(inputs=[input0,
                               input1,
-                              input2], outputs=outputs)
-
+                              input2
+                             ], outputs=outputs)
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+        return model
+
+    ### TRAIN & EVALUATE
+    ###
+    # define cross validation tests
+    kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+
+    cvscores = []
+    labels_preds = []
+    labels_y = []
+    for train, test in kfold.split(X0, y_cat):
+        model = get_model()
+
+        ###
+        # TRAIN
         model.fit([np.array(X0)[train],
                    np.array(X1)[train],
                    np.array(X2)[train]
                   ], y_cat[train],
-                  batch_size=batch_size, epochs=epochs, verbose=1)
+                  batch_size=batch_size, epochs=epochs, verbose=0)
 
         ###
-        # evaluate the model
+        # EVALUATE the model
         x0_test = np.array(X0)[test]
         x1_test = np.array(X1)[test]
         x2_test = np.array(X2)[test]
