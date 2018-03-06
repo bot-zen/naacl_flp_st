@@ -114,7 +114,10 @@ class Corpus():
             csvreader = csv.reader(csvfile, delimiter=self.tokens_delimiter,
                                    quotechar=self.tokens_quotechar)
             for row in csvreader:
-                label = int(row[1])
+                if self.mode == "train":
+                    label = int(row[1])
+                else:
+                    label = -1
                 txt_id, sentence_id, token_id = row[0].split('_')
 
                 if txt_id not in data:
