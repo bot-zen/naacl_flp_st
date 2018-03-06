@@ -7,15 +7,12 @@ Eurac Research and Alpen-Adria University contribution to NAACL-FLP-shared-task
 """
 
 from collections import Counter, OrderedDict
-from sys import argv, exit
+from sys import exit
 
 import csv
 import logging
 
-import pandas as pd
 import numpy as np
-
-from gensim.models.wrappers import FastText
 
 class Corpus():
     """
@@ -222,18 +219,6 @@ class Utils():
 
     def __init__(self):
         self.log = logging.getLogger(type(self).__name__)
-        self._models = None
-        self._missing_w2vs = dict()
-
-    @property
-    def models(self):
-        return self._models
-
-    @models.setter
-    def models(self, model):
-        if not self._models:
-            self._models = list()
-        self._models.append(model)
 
     @staticmethod
     def toks2feat(toks, model, context_length=10):
@@ -312,26 +297,6 @@ class Utils():
                                                      value=value, split=True)
         else:
             return toks
-
-    # @staticmethod
-    # def X_y(corpus, models):
-    #     retval_X = []
-    #     retval_y = []
-    #     for sentence in corpus.sentences:
-    #         sentence_toks_pads = Utils.pad_toks([tok[0] for tok in sentence])
-    #         sentence_ys_pads = Utils.pad_toks([tok[1] for tok in sentence], value=0)
-
-    #         for tmp_id, sentence_toks_pad in enumerate(sentence_toks_pads):
-    #             sentence_retval = []
-    #             for model in models:
-    #                 sentence_retval.extend(Utils.toks2feat(sentence_toks_pad, model))
-    #             # FIXME: implement 
-    #             #if len(models) > 1:
-    #             #    sentence_retval = list(map((lambda *args: np.hstack([*args])), *sentence_retval))
-
-    #             retval_X.append(np.array(sentence_retval))
-    #             retval_y.append(np.array(sentence_ys_pads[tmp_id]))
-    #     return retval_X, retval_y
 
     @staticmethod
     def f1_score_least_frequent(y_true, y_pred):
@@ -455,6 +420,8 @@ class Utils():
 def main():
     import logging
 
+    from gensim.models.wrappers import FastText
+
     from keras import backend as K
     from keras.layers import Masking, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional, concatenate
     from keras.models import Model, Input
@@ -470,13 +437,6 @@ def main():
     corpus_fn = "../naacl_flp/vuamc_corpus_train.csv"
     tokens_tags = "../naacl_flp/all_pos_tokens.csv"
     corpus = Corpus(corpus_fn, tokens_tags)
-
-    corpus_test_fn = "../naacl_flp/vuamc_corpus_test.csv"
-    tokens_test_tags = "../naacl_flp/all_pos_tokens_test.csv"
-    corpus_test = Corpus(corpus_test_fn, tokens_test_tags, mode="test")
-
-    # vuamc_corpus = pd.read_csv(corpus_fn, encoding="utf-8")
-    # toks_tags = pd.read_csv(tokens_tags, encoding="utf-8")
 
     models = []
     models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
@@ -580,6 +540,8 @@ def main():
         scores = model.evaluate([x0_test,
                                  x1_test,
                                  x2_test], y_cat[test], verbose=0)
+        logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+        cvscores.append(scores[1] * 100)
         #
         p = model.predict([x0_test,
                            x1_test,
