@@ -467,45 +467,64 @@ def main():
     logger.setLevel(logging.INFO)
     logging.debug("test")
 
-    if len(argv) == 1:
-        corpus_fn = "../naacl_flp/vuamc_corpus_train.csv"
-        tokens_tags = "../naacl_flp/all_pos_tokens.csv"
-    else:
-        corpus_fn = argv[1]
-
+    corpus_fn = "../naacl_flp/vuamc_corpus_train.csv"
+    tokens_tags = "../naacl_flp/all_pos_tokens.csv"
     corpus = Corpus(corpus_fn, tokens_tags)
+
+    corpus_test_fn = "../naacl_flp/vuamc_corpus_test.csv"
+    tokens_test_tags = "../naacl_flp/all_pos_tokens_test.csv"
+    corpus_test = Corpus(corpus_test_fn, tokens_test_tags, mode="test")
+
     # vuamc_corpus = pd.read_csv(corpus_fn, encoding="utf-8")
     # toks_tags = pd.read_csv(tokens_tags, encoding="utf-8")
 
     models = []
     models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
-    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
-    #models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high.bin'))
+    # models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
+    # models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
+    models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
+    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med-high.bin'))
 
-    X0, y = Utils.X_y(corpus, [models[0]])
-    X1, _ = Utils.X_y(corpus, [models[1]])
+    #
+    # seq_max_length = 50
+    seq_max_length = 10
+
+    X0, y = corpus.X_y(models[0], maxlen=seq_max_length)
+    X1, _ = corpus.X_y(models[1], maxlen=seq_max_length)
+    X2, _ = corpus.X_y(models[2], maxlen=seq_max_length)
     feature_vec_length0 = sum([model.vector_size for model in [models[0]]])
     feature_vec_length1 = sum([model.vector_size for model in [models[1]]])
+    feature_vec_length2 = sum([model.vector_size for model in [models[2]]])
 
     seed = 42
     #
     n_splits = 3
-    batch_size = 16 # 32
-    epochs = 3 # 5
-    #
-    seq_max_length = 50
-    #
-    # loss = Utils.weighted_categorical_crossentropy([1,1])
+    batch_size = 16
+    # batch_size = 32
 
-    loss = "categorical_crossentropy"
+    epochs = 3
+    # epochs = 5
+
+    #
+    #recurrent_dropout=0.1
+    recurrent_dropout=0.25  # !
+    #recurrent_dropout=0.5
+
+    #
+    # cf. http://ruder.io/optimizing-gradient-descent/
+    optimizer="rmsprop"  # !
+    #optimizer="adadelta"
+    #optimizer="adam"
+    #
+    loss = Utils.weighted_categorical_crossentropy([1,5])  # !
+    #loss = "categorical_crossentropy"
     y_cat = to_categorical(y, 2)
     #
     #loss = "binary_crossentropy"
     #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
     #
     #f1 = Utils.f1_score_least_frequent
-    #metrics = [f1]
-    metrics = ["accuracy"]
+    metrics = ["categorical_accuracy"]
 
     # define 10-fold cross validation test harness
     kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
@@ -518,6 +537,7 @@ def main():
         #sample_weight = y_cat[train] * 100
         #sample_weight = sample_weight.reshape(len(y_cat[train]), 100)
 
+
         # Create Model
         input0 = Input(shape=(seq_max_length, feature_vec_length0,))
         model0 = Masking(mask_value=[0]*feature_vec_length0)(input0)
@@ -525,27 +545,45 @@ def main():
         input1 = Input(shape=(seq_max_length, feature_vec_length1,))
         model1 = Masking(mask_value=[0]*feature_vec_length1)(input1)
 
-        model = concatenate([input0, input1])
-        model = Bidirectional(LSTM(100, return_sequences=True,
-                                   recurrent_dropout=0.1))(model)
+        input2 = Input(shape=(seq_max_length, feature_vec_length2,))
+        model2 = Masking(mask_value=[0]*feature_vec_length2)(input2)
+
+
+        model = concatenate([model0,
+                             model1,
+                             model2])
+        model = Bidirectional(LSTM(32, return_sequences=True,
+                                   recurrent_dropout=recurrent_dropout))(model)
+        #model = Bidirectional(LSTM(100, return_sequences=True,
+        #                           recurrent_dropout=recurrent_dropout))(model)
         #model = Flatten()(model)
         #outputs = Dense(seq_max_length, activation="sigmoid")(model)
         outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
         #outputs = TimeDistributed(Dense(1, activation="sigmoid"))(model)
-        model = Model(inputs=[input0, input1], outputs=outputs)
+        model = Model(inputs=[input0,
+                              input1,
+                              input2], outputs=outputs)
 
-        model.compile(optimizer="rmsprop", loss=loss, metrics=metrics)
-        model.fit([np.array(X0)[train], np.array(X1)[train]], y_cat[train],
+        model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+        model.fit([np.array(X0)[train],
+                   np.array(X1)[train],
+                   np.array(X2)[train]
+                  ], y_cat[train],
                   batch_size=batch_size, epochs=epochs, verbose=1)
 
         ###
         # evaluate the model
         x0_test = np.array(X0)[test]
         x1_test = np.array(X1)[test]
+        x2_test = np.array(X2)[test]
         #
-        scores = model.evaluate([x0_test, x1_test], y_cat[test], verbose=0)
+        scores = model.evaluate([x0_test,
+                                 x1_test,
+                                 x2_test], y_cat[test], verbose=0)
         #
-        p = model.predict([x0_test, x1_test], batch_size=batch_size)
+        p = model.predict([x0_test,
+                           x1_test,
+                           x2_test], batch_size=batch_size)
         q = K.argmax(p)
         r = K.eval(q)
         for xt_id, xt in enumerate(x0_test):
