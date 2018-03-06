@@ -440,8 +440,8 @@ def main():
 
     models = []
     models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
-    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
-    # models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
+    # models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
+    models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
     models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med-high.bin'))
 
     #
@@ -459,13 +459,13 @@ def main():
     seed = 42
     #
     n_splits = 3
-    batch_size = 16
-    # batch_size = 32  # !
+    # batch_size = 16
+    batch_size = 32  # !
     # batch_size = 64
 
-    epochs = 3
+    # epochs = 3
     # epochs = 5
-    # epochs = 20  # !
+    epochs = 20  # !
     # epochs = 32
 
     #
@@ -530,43 +530,43 @@ def main():
     # define cross validation tests
     kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
-    cvscores = []
-    labels_preds = []
-    labels_y = []
-    for train, test in kfold.split(X0, y_cat):
-        model = get_model()
+    # cvscores = []
+    # labels_preds = []
+    # labels_y = []
+    # for train, test in kfold.split(X0, y_cat):
+    #     model = get_model()
 
-        ###
-        # TRAIN
-        model.fit([np.array(X0)[train],
-                   np.array(X1)[train],
-                   np.array(X2)[train]
-                  ], y_cat[train],
-                  batch_size=batch_size, epochs=epochs, verbose=0)
+    #     ###
+    #     # TRAIN
+    #     model.fit([np.array(X0)[train],
+    #                np.array(X1)[train],
+    #                np.array(X2)[train]
+    #               ], y_cat[train],
+    #               batch_size=batch_size, epochs=epochs, verbose=0)
 
-        ###
-        # EVALUATE the model
-        x0_test = np.array(X0)[test]
-        x1_test = np.array(X1)[test]
-        x2_test = np.array(X2)[test]
-        #
-        scores = model.evaluate([x0_test,
-                                 x1_test,
-                                 x2_test], y_cat[test], verbose=0)
-        logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
-        cvscores.append(scores[1] * 100)
-        #
-        p = model.predict([x0_test,
-                           x1_test,
-                           x2_test], batch_size=batch_size)
-        q = K.argmax(p)
-        r = K.eval(q)
-        for xt_id, xt in enumerate(x0_test):
-            dims = len(xt[np.all(xt, axis=1)])
-            labels_preds.extend(r[xt_id][:dims])
-            labels_y.extend(np.array(y)[test][xt_id][:dims])
-    logging.info("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
-    logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
+    #     ###
+    #     # EVALUATE the model
+    #     x0_test = np.array(X0)[test]
+    #     x1_test = np.array(X1)[test]
+    #     x2_test = np.array(X2)[test]
+    #     #
+    #     scores = model.evaluate([x0_test,
+    #                              x1_test,
+    #                              x2_test], y_cat[test], verbose=0)
+    #     logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+    #     cvscores.append(scores[1] * 100)
+    #     #
+    #     p = model.predict([x0_test,
+    #                        x1_test,
+    #                        x2_test], batch_size=batch_size)
+    #     q = K.argmax(p)
+    #     r = K.eval(q)
+    #     for xt_id, xt in enumerate(x0_test):
+    #         dims = len(xt[np.all(xt, axis=1)])
+    #         labels_preds.extend(r[xt_id][:dims])
+    #         labels_y.extend(np.array(y)[test][xt_id][:dims])
+    # logging.info("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
+    # logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
 
     ### PREDICT
     ###
