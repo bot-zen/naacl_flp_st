@@ -568,7 +568,6 @@ def main():
     logging.info("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
     logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
 
-    exit(0)
     ### PREDICT
     ###
     # Re-init the model
@@ -616,7 +615,7 @@ def main():
                 y_pred = y_preds[pred_id]
                 if tok_id+1 in tokens:
                     # print(pred_id, tok_id, tok_id%seq_max_length)
-                    logging.info("{}_{}_{},{},{}".format(txt_id, sentence_id,
+                    print("{}_{}_{},{},{}".format(txt_id, sentence_id,
                                                   tok_id+1, y_pred[tok_id %
                                                                    seq_max_length],
                                                   sentence[tok_id][0]))
