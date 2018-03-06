@@ -432,6 +432,10 @@ class Utils():
             weights = np.array([0.5,2,10]) # Class one at 0.5, class 2 twice the normal weights, class 3 10x.
             loss = weighted_categorical_crossentropy(weights)
             model.compile(loss=loss,optimizer='adam')
+
+
+        from:
+            https://github.com/keras-team/keras/issues/6261
         """
 
         weights = K.variable(weights)
