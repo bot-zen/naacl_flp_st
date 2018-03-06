@@ -40,20 +40,26 @@ class Corpus():
     --- >8 ---
 
     and their 'test' counterparts without class labels (or 'M_'-information).
+
+    Parameters:
+        vuamc_fn: file name string
+        tokens_fn: file name string
+        mode: "train" will read labels from tokens_fn
+
     """
-    def __init__(self, vuamc_fn, tokens_fn, mode='train', sanity_check=False):
+    def __init__(self, vuamc_fn, tokens_fn, mode="train", sanity_check=False):
         self.log = logging.getLogger(type(self).__name__)
-        self.vuamc_fn = vuamc_fn
-        self.tokens_fn = tokens_fn
-
-
         self.vuamc_delimiter = self.tokens_delimiter = ","
         self.vuamc_quotechar = self.tokens_quotechar = '"'
 
+        # set initial values for params
+        self.vuamc_fn = vuamc_fn
+        self.tokens_fn = tokens_fn
+        self.mode = mode
+
+        # load files
         self.vuamc = self._load_vuamc(self.vuamc_fn)
         self.tokens = self._load_tokens(self.tokens_fn)
-
-        self.mode = mode
 
         if sanity_check:
             self._sanity_check()
