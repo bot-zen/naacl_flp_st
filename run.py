@@ -423,11 +423,10 @@ def main():
     from gensim.models.wrappers import FastText
 
     from keras import backend as K
-    from keras.layers import Masking, Flatten, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional, concatenate
+    from keras.layers import Masking, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional, concatenate
     from keras.models import Model, Input
     from keras.utils import to_categorical
 
-    import sklearn
     from sklearn.model_selection import KFold
 
     logger = logging.getLogger()
@@ -438,25 +437,12 @@ def main():
     tokens_tags = "../naacl_flp/all_pos_tokens.csv"
     corpus = Corpus(corpus_fn, tokens_tags)
 
-    models = []
-    models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
-    # models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
-    models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
-    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med-high.bin'))
-
+    seed = 42
     #
     # seq_max_length = 50
     seq_max_length = 10  # !
     # seq_max_length = 15
 
-    X0, y = corpus.X_y(models[0], maxlen=seq_max_length)
-    X1, _ = corpus.X_y(models[1], maxlen=seq_max_length)
-    X2, _ = corpus.X_y(models[2], maxlen=seq_max_length)
-    feature_vec_length0 = sum([model.vector_size for model in [models[0]]])
-    feature_vec_length1 = sum([model.vector_size for model in [models[1]]])
-    feature_vec_length2 = sum([model.vector_size for model in [models[2]]])
-
-    seed = 42
     #
     n_splits = 3
     # batch_size = 16
@@ -469,9 +455,9 @@ def main():
     # epochs = 32
 
     #
-    #recurrent_dropout=0.1
-    recurrent_dropout=0.25  # !
-    #recurrent_dropout=0.5
+    #recurrent_dropout = 0.1
+    recurrent_dropout = 0.25  # !
+    #recurrent_dropout = 0.5
 
     #
     # cf. http://ruder.io/optimizing-gradient-descent/
@@ -479,6 +465,29 @@ def main():
     #optimizer = "adadelta"
     #optimizer = "adam"
     #
+    # f1 = Utils.f1
+    # metrics = ["categorical_accuracy", f1]
+    metrics = ["categorical_accuracy"]
+
+
+    models = []
+    models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
+    # models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
+    models.append(FastText.load_fasttext_format('../data/wiki.en.bin'))
+    models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
+    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med-high.bin'))
+
+    X0, y = corpus.X_y(models[0], maxlen=seq_max_length)
+    X1, _ = corpus.X_y(models[1], maxlen=seq_max_length)
+    X2, _ = corpus.X_y(models[2], maxlen=seq_max_length)
+    X3, _ = corpus.X_y(models[3], maxlen=seq_max_length)
+
+    feature_vec_length0 = sum([model.vector_size for model in [models[0]]])
+    feature_vec_length1 = sum([model.vector_size for model in [models[1]]])
+    feature_vec_length2 = sum([model.vector_size for model in [models[2]]])
+    feature_vec_length3 = sum([model.vector_size for model in [models[3]]])
+
+
     loss = Utils.weighted_categorical_crossentropy([1, 5])  # !
     #loss = "categorical_crossentropy"
     y_cat = to_categorical(y, 2)
@@ -486,10 +495,6 @@ def main():
     #loss = "binary_crossentropy"
     #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
     #
-    # f1 = Utils.f1
-    # metrics = ["categorical_accuracy", f1]
-    metrics = ["categorical_accuracy"]
-
 
     def get_model():
         """ Create and return the model. """
@@ -504,10 +509,14 @@ def main():
         input2 = Input(shape=(seq_max_length, feature_vec_length2,))
         model2 = Masking(mask_value=[0]*feature_vec_length2)(input2)
 
+        input3 = Input(shape=(seq_max_length, feature_vec_length3,))
+        model3 = Masking(mask_value=[0]*feature_vec_length3)(input3)
+
         # Combinde INPUTS (including masks)
         model = concatenate([model0,
                              model1,
-                             model2
+                             model2,
+                             model3
                             ])
 
         # CORE MODEL
@@ -520,7 +529,8 @@ def main():
 
         model = Model(inputs=[input0,
                               input1,
-                              input2
+                              input2,
+                              model3
                              ], outputs=outputs)
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
         return model
@@ -574,7 +584,8 @@ def main():
     model = get_model()
     model.fit([np.array(X0),
                np.array(X1),
-               np.array(X2)
+               np.array(X2),
+               np.array(X3)
               ], y_cat,
               batch_size=batch_size, epochs=epochs, verbose=0)
 
@@ -585,6 +596,7 @@ def main():
     x0_pred = []
     x1_pred = []
     x2_pred = []
+    x3_pred = []
     for txt_id in corpus_test.tokens:
         for sentence_id in corpus_test.tokens[txt_id]:
             sentence = corpus_test.sentence(txt_id, sentence_id)
@@ -598,11 +610,15 @@ def main():
             x2_pred.extend(Corpus.X_y_sentence(sentence=sentence,
                                                model=models[2],
                                                maxlen=seq_max_length)[0])
+            x3_pred.extend(Corpus.X_y_sentence(sentence=sentence,
+                                               model=models[3],
+                                               maxlen=seq_max_length)[0])
 
     y_preds = []
     p = model.predict([np.array(x0_pred),
                        np.array(x1_pred),
-                       np.array(x2_pred)], batch_size=batch_size)
+                       np.array(x2_pred),
+                       np.array(x3_pred)], batch_size=batch_size)
     q = K.argmax(p)
     y_preds = K.eval(q)
 
