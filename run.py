@@ -262,7 +262,7 @@ class Utils():
                     if post_toks:
                         context_toks.append(post_toks.pop(0))
 
-                log.info("'%s'    : not in model:%s", token, str(model))
+                log.debug("'%s'    : not in model:%s", token, str(model))
                 log.debug("Tokens  : %s", str(toks))
                 log.debug("pre/post: %s | %s", str(pre_toks), str(post_toks))
                 log.debug("Context : %s", str(context_toks))
@@ -423,7 +423,7 @@ def main():
     from gensim.models.wrappers import FastText
 
     from keras import backend as K
-    from keras.layers import Masking, LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional, concatenate
+    from keras.layers import Masking, LSTM, Dense, TimeDistributed, Bidirectional, concatenate
     from keras.models import Model, Input
     from keras.utils import to_categorical
 
@@ -437,6 +437,23 @@ def main():
     tokens_tags = "../naacl_flp/all_pos_tokens.csv"
     corpus = Corpus(corpus_fn, tokens_tags)
 
+    embedding_models = []
+    embedding_models.append(
+        FastText.load_fasttext_format('../data/bnc2_tt2'))
+    # embedding_models.append(
+    #     FastText.load_fasttext_format('../data/wiki.en.bin'))
+    # embedding_models.append(
+    #     FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
+    embedding_models.append(
+        FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low_min1_dim50.bin'))
+    embedding_models.append(
+        FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med_min1_dim50.bin'))
+    embedding_models.append(
+        FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high_min1_dim50.bin'))
+
+
+    ### PARAMS
+    #
     seed = 42
     #
     # seq_max_length = 50
@@ -470,22 +487,14 @@ def main():
     metrics = ["categorical_accuracy"]
 
 
-    models = []
-    models.append(FastText.load_fasttext_format('../data/bnc2_tt2'))
-    # models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low-med.bin'))
-    models.append(FastText.load_fasttext_format('../data/wiki.en.bin'))
-    models.append(FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
-    models.append(FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med-high.bin'))
-
-    X0, y = corpus.X_y(models[0], maxlen=seq_max_length)
-    X1, _ = corpus.X_y(models[1], maxlen=seq_max_length)
-    X2, _ = corpus.X_y(models[2], maxlen=seq_max_length)
-    X3, _ = corpus.X_y(models[3], maxlen=seq_max_length)
-
-    feature_vec_length0 = sum([model.vector_size for model in [models[0]]])
-    feature_vec_length1 = sum([model.vector_size for model in [models[1]]])
-    feature_vec_length2 = sum([model.vector_size for model in [models[2]]])
-    feature_vec_length3 = sum([model.vector_size for model in [models[3]]])
+    xs = []
+    feature_vec_lengths = []
+    for embed_mod in embedding_models:
+        x, _ = corpus.X_y(embed_mod, maxlen=seq_max_length)
+        xs.append(x)
+        feature_vec_lengths.append(embed_mod.vector_size)
+    _, y = corpus.X_y(embedding_models[0], maxlen=seq_max_length)
+    logging.info(feature_vec_lengths)
 
 
     loss = Utils.weighted_categorical_crossentropy([1, 5])  # !
@@ -500,24 +509,17 @@ def main():
         """ Create and return the model. """
 
         # INPUTS
-        input0 = Input(shape=(seq_max_length, feature_vec_length0,))
-        model0 = Masking(mask_value=[0]*feature_vec_length0)(input0)
+        inputs = []
+        models = []
+        for embed_mod_id, _ in enumerate(embedding_models):
+            inputs.append(
+                Input(shape=(seq_max_length, feature_vec_lengths[embed_mod_id],)))
 
-        input1 = Input(shape=(seq_max_length, feature_vec_length1,))
-        model1 = Masking(mask_value=[0]*feature_vec_length1)(input1)
-
-        input2 = Input(shape=(seq_max_length, feature_vec_length2,))
-        model2 = Masking(mask_value=[0]*feature_vec_length2)(input2)
-
-        input3 = Input(shape=(seq_max_length, feature_vec_length3,))
-        model3 = Masking(mask_value=[0]*feature_vec_length3)(input3)
+            models.append(
+                Masking(mask_value=[0]*feature_vec_lengths[embed_mod_id])(inputs[-1]))
 
         # Combinde INPUTS (including masks)
-        model = concatenate([model0,
-                             model1,
-                             model2,
-                             model3
-                            ])
+        model = concatenate(models)
 
         # CORE MODEL
         model = Bidirectional(LSTM(32, return_sequences=True,
@@ -527,18 +529,14 @@ def main():
         # one-hot encode binary label
         outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
 
-        model = Model(inputs=[input0,
-                              input1,
-                              input2,
-                              model3
-                             ], outputs=outputs)
+        model = Model(inputs=inputs, outputs=outputs)
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
         return model
 
-    ### TRAIN & EVALUATE
-    ###
-    # define cross validation tests
-    kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    # ### TRAIN & EVALUATE
+    # ###
+    # # define cross validation tests
+    # kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
     # cvscores = []
     # labels_preds = []
@@ -548,10 +546,7 @@ def main():
 
     #     ###
     #     # TRAIN
-    #     model.fit([np.array(X0)[train],
-    #                np.array(X1)[train],
-    #                np.array(X2)[train]
-    #               ], y_cat[train],
+    #     model.fit([np.array(x)[train] for x in xs], y_cat[train],
     #               batch_size=batch_size, epochs=epochs, verbose=0)
 
     #     ###
@@ -581,53 +576,49 @@ def main():
     ### PREDICT
     ###
     # Re-init the model
+    logging.info("building model...")
     model = get_model()
-    model.fit([np.array(X0),
-               np.array(X1),
-               np.array(X2),
-               np.array(X3)
-              ], y_cat,
-              batch_size=batch_size, epochs=epochs, verbose=0)
+    logging.info("...done.")
+
+    logging.info("training model...")
+    model.fit([np.array(x) for x in xs],
+              y_cat, batch_size=batch_size, epochs=epochs, verbose=0)
+    logging.info("...done.")
 
     corpus_test_fn = "../naacl_flp/vuamc_corpus_test.csv"
     tokens_test_tags = "../naacl_flp/all_pos_tokens_test.csv"
     corpus_test = Corpus(corpus_test_fn, tokens_test_tags, mode="test")
 
-    x0_pred = []
-    x1_pred = []
-    x2_pred = []
-    x3_pred = []
-    for txt_id in corpus_test.tokens:
-        for sentence_id in corpus_test.tokens[txt_id]:
-            sentence = corpus_test.sentence(txt_id, sentence_id)
+    logging.info("calculating features from embeddings...")
+    x_preds = []
+    for embed_mod_id, embed_mod in enumerate(embedding_models):
+        x_preds.append([])
+        logging.info("   embedding %d/%d...", embed_mod_id+1, len(embedding_models))
+        for txt_id in corpus_test.tokens:
+            for sentence_id in corpus_test.tokens[txt_id]:
+                sentence = corpus_test.sentence(txt_id, sentence_id)
+                x, _ = Corpus.X_y_sentence(sentence=sentence,
+                                           model=embed_mod,
+                                           maxlen=seq_max_length)
+                x_preds[embed_mod_id].extend(x)
+        logging.info("   ...done.")
+    logging.info("...done.")
 
-            x0_pred.extend(Corpus.X_y_sentence(sentence=sentence,
-                                               model=models[0],
-                                               maxlen=seq_max_length)[0])
-            x1_pred.extend(Corpus.X_y_sentence(sentence=sentence,
-                                               model=models[1],
-                                               maxlen=seq_max_length)[0])
-            x2_pred.extend(Corpus.X_y_sentence(sentence=sentence,
-                                               model=models[2],
-                                               maxlen=seq_max_length)[0])
-            x3_pred.extend(Corpus.X_y_sentence(sentence=sentence,
-                                               model=models[3],
-                                               maxlen=seq_max_length)[0])
-
+    logging.info("using model to calculate predictions...")
     y_preds = []
-    p = model.predict([np.array(x0_pred),
-                       np.array(x1_pred),
-                       np.array(x2_pred),
-                       np.array(x3_pred)], batch_size=batch_size)
+    p = model.predict([np.array(x_pred) for x_pred in x_preds],
+                      batch_size=batch_size)
     q = K.argmax(p)
     y_preds = K.eval(q)
+    logging.info("...done.")
 
+    # OUTPUT predictions
     pred_id = 0
     for txt_id in corpus_test.tokens:
         for sentence_id in corpus_test.tokens[txt_id]:
             sentence = corpus_test.sentence(txt_id, sentence_id)
             tokens = corpus_test.tokens[txt_id][sentence_id]
-            for tok_id in range(len(sentence)):
+            for tok_id, _ in enumerate(sentence):
                 y_pred = y_preds[pred_id]
                 if tok_id+1 in tokens:
                     # print(pred_id, tok_id, tok_id%seq_max_length)
@@ -638,27 +629,6 @@ def main():
                 if (tok_id+1) % seq_max_length == 0 and tok_id+1 < len(sentence):
                     pred_id += 1
             pred_id += 1
-
-            #X0_sent, _ = Corpus.X_y_sentence(
-            #    sentence=sentence, model=models[0], maxlen=seq_max_length)
-            #X1_sent, _ = Corpus.X_y_sentence(
-            #    sentence=sentence, model=models[1], maxlen=seq_max_length)
-
-            #y_preds = []
-            #for sent_id, sent in enumerate(X0_sent):
-            #    p = model.predict([np.array([X0_sent[sent_id]]),
-            #                       np.array([X1_sent[sent_id]])], batch_size=batch_size)
-            #    q = K.argmax(p)
-            #    r = K.eval(q)
-            #    y_preds.extend(r)
-            #y_preds = np.array(y_preds).flatten()
-
-            #tokens = corpus_test.tokens[txt_id][sentence_id]
-            #for tok_id in range(len(sentence)):
-            #    if tok_id+1 in tokens:
-            #        print("{}_{}_{},{},{}".format(txt_id, sentence_id,
-            #                                      tok_id+1, y_preds[tok_id],
-            #                                      sentence[tok_id][0]))
 
 if __name__ == "__main__":
     main()
