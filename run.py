@@ -529,7 +529,10 @@ def main():
                 Masking(mask_value=[0]*feature_vec_lengths[embed_mod_id])(inputs[-1]))
 
         # Combinde INPUTS (including masks)
-        model = concatenate(models)
+        if len(models) > 1:
+            model = concatenate(models)
+        else:
+            model = models[0]
 
         # CORE MODEL
         model = Bidirectional(LSTM(32, return_sequences=True,
