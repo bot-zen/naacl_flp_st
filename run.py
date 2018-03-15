@@ -441,6 +441,7 @@ def main():
 
     corpus_fn = "../naacl_flp/vuamc_corpus_train.csv"
     tokens_tags = "../naacl_flp/all_pos_tokens.csv"
+    # tokens_tags = "../naacl_flp/verb_tokens.csv"
     corpus = Corpus(corpus_fn, tokens_tags)
 
     embedding_models = []
@@ -463,8 +464,9 @@ def main():
     seed = 42
     #
     # seq_max_length = 50
-    seq_max_length = 10  # !
-    # seq_max_length = 15
+    # seq_max_length = 5  #
+    # seq_max_length = 10  # !
+    seq_max_length = 15
 
     #
     n_splits = 3
@@ -503,7 +505,9 @@ def main():
     logging.info(feature_vec_lengths)
 
 
-    loss = Utils.weighted_categorical_crossentropy([1, 5])  # !
+    loss_weight = np.log((len(np.array(y).flatten())/sum(np.array(y).flatten()))-1)
+    loss = Utils.weighted_categorical_crossentropy([1, loss_weight])  # !
+    logging.info("Set loss_weight 1 : {}".format(loss_weight))
     #loss = "categorical_crossentropy"
     y_cat = to_categorical(y, 2)
     #
@@ -593,6 +597,7 @@ def main():
 
     corpus_test_fn = "../naacl_flp/vuamc_corpus_test.csv"
     tokens_test_tags = "../naacl_flp/all_pos_tokens_test.csv"
+    # tokens_test_tags = "../naacl_flp/verb_tokens_test.csv"
     corpus_test = Corpus(corpus_test_fn, tokens_test_tags, mode="test")
 
     logging.info("calculating features from embeddings...")
