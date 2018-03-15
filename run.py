@@ -12,6 +12,8 @@ from sys import exit
 import csv
 import logging
 
+from nltk import pos_tag
+
 import numpy as np
 
 class Corpus():
@@ -219,12 +221,36 @@ class Corpus():
         _, y = self.X_y(model)
         return y
 
+    def Xposs(self, maxlen=None):
+        retval = []
+        for sent in self.sentences:
+            poss = [tag[1] for tag in pos_tag([tok[0] for tok in sent])]
+            sentence_poss_pads = Utils.pad_toks(poss,
+                                                value=0,
+                                                maxlen=maxlen)
+            for tmp_id, sentence_poss_pad in enumerate(sentence_poss_pads):
+                retval.append(Utils.poss2feat(sentence_poss_pad))
+        return np.array(retval)
+
 class Utils():
     """ Utility and helper functions. """
     padding_str = "__PADDING__"
+    poss = ['$', "''", '(', ')', ',', '.', ':', 'CC', 'CD', 'DT', 'EX', 'FW',
+            'IN', 'JJ', 'JJR', 'JJS', 'MD', 'NN', 'NNP', 'NNPS', 'NNS', 'PDT',
+            'POS', 'PRP', 'PRP$', 'RB', 'RBR', 'RBS', 'RP', 'TO', 'UH', 'VB',
+            'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'WDT', 'WP', 'WP$', 'WRB']
 
-    def __init__(self):
-        self.log = logging.getLogger(type(self).__name__)
+    @staticmethod
+    def pos2feat(tok):
+        try:
+            # 1-based: reserve 0 for padding (and the last for unknown)
+            return Utils.poss.index(tok) + 1
+        except ValueError:
+            return len(Utils.poss) + 1
+
+    @staticmethod
+    def poss2feat(toks):
+        return [Utils.pos2feat(tok) for tok in toks]
 
     @staticmethod
     def toks2feat(toks, model, context_length=10):
@@ -515,6 +541,11 @@ def main():
     #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
     #
 
+    logging.info("Tagging training corpus and calculating features...")
+    xposs = corpus.Xposs(maxlen=seq_max_length)
+    xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
+    logging.info("...done.")
+
     def get_model():
         """ Create and return the model. """
 
@@ -528,6 +559,9 @@ def main():
             models.append(
                 Masking(mask_value=[0]*feature_vec_lengths[embed_mod_id])(inputs[-1]))
 
+        inputs.append(Input(shape=(seq_max_length, len(Utils.poss)+2,)))
+        models.append(Masking(mask_value=[0]*(len(Utils.poss)+2))(inputs[-1]))
+
         # Combinde INPUTS (including masks)
         if len(models) > 1:
             model = concatenate(models)
@@ -535,7 +569,10 @@ def main():
             model = models[0]
 
         # CORE MODEL
-        model = Bidirectional(LSTM(32, return_sequences=True,
+        model = Bidirectional(LSTM(50, return_sequences=True,
+                                   dropout=0,  # !
+                                   # dropout=0.1,
+                                   # dropout=0.25,
                                    recurrent_dropout=recurrent_dropout))(model)
 
         # (unfold LSTM and)
@@ -594,7 +631,7 @@ def main():
     logging.info("...done.")
 
     logging.info("training model...")
-    model.fit([np.array(x) for x in xs],
+    model.fit([np.array(x) for x in xs] + [xposs_cat],
               y_cat, batch_size=batch_size, epochs=epochs, verbose=0)
     logging.info("...done.")
 
@@ -618,9 +655,14 @@ def main():
         logging.info("   ...done.")
     logging.info("...done.")
 
+    logging.info("Tagging testing corpus and calculating features...")
+    xposs = corpus_test.Xposs(maxlen=seq_max_length)
+    xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
+    logging.info("...done.")
+
     logging.info("using model to calculate predictions...")
     y_preds = []
-    p = model.predict([np.array(x_pred) for x_pred in x_preds],
+    p = model.predict([np.array(x_pred) for x_pred in x_preds] + [xposs_cat],
                       batch_size=batch_size)
     q = K.argmax(p)
     y_preds = K.eval(q)
