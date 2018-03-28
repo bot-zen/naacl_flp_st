@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """
+Eurac Research and Alpen-Adria University contribution
+to the NAACL-FLP-shared-task 2018.
+
 Author: egon w. stemle <egon.stemle@eurac.edu>
 Contributor: alexander onysko <alexander.onysko@aau.at>
-
-Eurac Research and Alpen-Adria University contribution to NAACL-FLP-shared-task
 """
 
 from collections import Counter, OrderedDict
-from sys import exit
+from sys import exit, stdout
 
+import argparse
 import csv
 import logging
 
 from nltk import pos_tag
 
 import numpy as np
+
+DESCRIPTION = __doc__
+EPILOG = None
 
 class Corpus():
     """
@@ -461,66 +466,32 @@ def main():
 
     from sklearn.model_selection import KFold
 
+    ### PARSE PARAMS and INIT LOGGING
+    args = _parse_args()
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    logging.debug("test")
+    logging_format = "%(funcName)8s(),ln%(lineno)3s: %(message)s"
+    logging.basicConfig(format=logging_format, level=args.log_level)
+    logging.debug("Command line arguments:%s", args)
 
-    corpus_fn = "../naacl_flp/vuamc_corpus_train.csv"
-    tokens_tags = "../naacl_flp/all_pos_tokens.csv"
-    # tokens_tags = "../naacl_flp/verb_tokens.csv"
-    corpus = Corpus(corpus_fn, tokens_tags)
-
-    embedding_models = []
-    embedding_models.append(
-        FastText.load_fasttext_format('../data/bnc2_tt2'))
-    # embedding_models.append(
-    #     FastText.load_fasttext_format('../data/wiki.en.bin'))
-    # embedding_models.append(
-    #     FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
-    embedding_models.append(
-        FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low_min1_dim50.bin'))
-    embedding_models.append(
-        FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med_min1_dim50.bin'))
-    embedding_models.append(
-        FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high_min1_dim50.bin'))
-
-
-    ### PARAMS
-    #
+    ### SET PARAMS
     seed = 42
-    #
-    # seq_max_length = 50
-    # seq_max_length = 5  #
-    # seq_max_length = 10  # !
-    seq_max_length = 15
+    seq_max_length = args.seq_max_length
+    n_splits = args.n_splits
+    batch_size = args.batch_size
+    epochs = args.epochs
+    recurrent_dropout = args.recurrent_dropout
+    optimizer = args.optimizer
+    metrics = args.metrics.split(',')
 
-    #
-    n_splits = 3
-    # batch_size = 16
-    batch_size = 32  # !
-    # batch_size = 64
+    ### SET CORPUS
+    corpus = Corpus(args.corpus_fn, args.tokens_tags)
 
-    # epochs = 3
-    # epochs = 5
-    epochs = 20  # !
-    # epochs = 32
+    ### SET EMBEDDINGS
+    embedding_models = []
+    for embedding_fn in args.embeddings:
+        embedding_models.append(FastText.load_fasttext_format(embedding_fn))
 
-    #
-    #recurrent_dropout = 0.1
-    recurrent_dropout = 0.25  # !
-    #recurrent_dropout = 0.5
-
-    #
-    # cf. http://ruder.io/optimizing-gradient-descent/
-    optimizer = "rmsprop"  # !
-    #optimizer = "adadelta"
-    #optimizer = "adam"
-    #
-    # f1 = Utils.f1
-    # metrics = ["categorical_accuracy", f1]
-    metrics = ["categorical_accuracy"]
-
-
+    ### EXTRACT FEATURES
     xs = []
     feature_vec_lengths = []
     for embed_mod in embedding_models:
@@ -541,10 +512,11 @@ def main():
     #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
     #
 
-    logging.info("Tagging training corpus and calculating features...")
-    xposs = corpus.Xposs(maxlen=seq_max_length)
-    xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
-    logging.info("...done.")
+    if args.pos:
+        logging.info("POS-tagging training corpus and calculating features...")
+        xposs = corpus.Xposs(maxlen=seq_max_length)
+        xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
+        logging.info("...done.")
 
     def get_model():
         """ Create and return the model. """
@@ -559,8 +531,9 @@ def main():
             models.append(
                 Masking(mask_value=[0]*feature_vec_lengths[embed_mod_id])(inputs[-1]))
 
-        inputs.append(Input(shape=(seq_max_length, len(Utils.poss)+2,)))
-        models.append(Masking(mask_value=[0]*(len(Utils.poss)+2))(inputs[-1]))
+        if args.pos:
+            inputs.append(Input(shape=(seq_max_length, len(Utils.poss)+2,)))
+            models.append(Masking(mask_value=[0]*(len(Utils.poss)+2))(inputs[-1]))
 
         # Combinde INPUTS (including masks)
         if len(models) > 1:
@@ -583,46 +556,46 @@ def main():
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
         return model
 
-    # ### TRAIN & EVALUATE
-    # ###
-    # # define cross validation tests
-    # kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    ### TRAIN & EVALUATE
+    ###
+    # define cross validation tests
+    if n_splits > 0 and args.evaluate:
+        kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
-    # cvscores = []
-    # labels_preds = []
-    # labels_y = []
-    # for train, test in kfold.split(X0, y_cat):
-    #     model = get_model()
+        cvscores = []
+        labels_preds = []
+        labels_y = []
+        for train, test in kfold.split(xs[0], y_cat):
+            model = get_model()
+            X_train = [np.array(x)[train] for x in xs]
+            X_test = [np.array(x)[test] for x in xs]
+            if args.pos:
+                X_train += [xposs_cat[train]]
+                X_test += [xposs_cat[test]]
 
-    #     ###
-    #     # TRAIN
-    #     model.fit([np.array(x)[train] for x in xs], y_cat[train],
-    #               batch_size=batch_size, epochs=epochs, verbose=0)
+            ###
+            # TRAIN
+            model.fit(X_train, y_cat[train],
+                      batch_size=batch_size, epochs=epochs, verbose=0)
 
-    #     ###
-    #     # EVALUATE the model
-    #     x0_test = np.array(X0)[test]
-    #     x1_test = np.array(X1)[test]
-    #     x2_test = np.array(X2)[test]
-    #     #
-    #     scores = model.evaluate([x0_test,
-    #                              x1_test,
-    #                              x2_test], y_cat[test], verbose=0)
-    #     logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
-    #     cvscores.append(scores[1] * 100)
-    #     #
-    #     p = model.predict([x0_test,
-    #                        x1_test,
-    #                        x2_test], batch_size=batch_size)
-    #     q = K.argmax(p)
-    #     r = K.eval(q)
-    #     for xt_id, xt in enumerate(x0_test):
-    #         dims = len(xt[np.all(xt, axis=1)])
-    #         labels_preds.extend(r[xt_id][:dims])
-    #         labels_y.extend(np.array(y)[test][xt_id][:dims])
-    # logging.info("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
-    # logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
+            ###
+            # EVALUATE the model
+            scores = model.evaluate(X_test, y_cat[test], verbose=0)
 
+            logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+            print(scores[1], file=args.eval_fn)
+            cvscores.append(scores[1] * 100)
+
+
+        logging.info("%.2f\t+/- %.2f" % (np.mean(cvscores), np.std(cvscores)))
+        print("%.2f\t+/- %.2f" % (np.mean(cvscores), np.std(cvscores)),
+              file=args.eval_fn)
+        print("\n###", file=args.eval_fn)
+        model.summary(print_fn=lambda x: print(x, file=args.eval_fn))
+        # logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
+
+    if not args.predict:
+        exit(0)
     ### PREDICT
     ###
     # Re-init the model
@@ -631,14 +604,14 @@ def main():
     logging.info("...done.")
 
     logging.info("training model...")
-    model.fit([np.array(x) for x in xs] + [xposs_cat],
-              y_cat, batch_size=batch_size, epochs=epochs, verbose=0)
+    X_input = [np.array(x) for x in xs]
+    if args.pos:
+        X_input += [xposs_cat]
+    model.fit(X_input, y_cat, batch_size=batch_size, epochs=epochs, verbose=0)
     logging.info("...done.")
 
-    corpus_test_fn = "../naacl_flp/vuamc_corpus_test.csv"
-    tokens_test_tags = "../naacl_flp/all_pos_tokens_test.csv"
-    # tokens_test_tags = "../naacl_flp/verb_tokens_test.csv"
-    corpus_test = Corpus(corpus_test_fn, tokens_test_tags, mode="test")
+    ### SET CORPUS
+    corpus_test = Corpus(args.corpus_test_fn, args.tokens_test_tags, mode="test")
 
     logging.info("calculating features from embeddings...")
     x_preds = []
@@ -655,15 +628,18 @@ def main():
         logging.info("   ...done.")
     logging.info("...done.")
 
-    logging.info("Tagging testing corpus and calculating features...")
-    xposs = corpus_test.Xposs(maxlen=seq_max_length)
-    xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
-    logging.info("...done.")
+    if args.pos:
+        logging.info("Tagging testing corpus and calculating features...")
+        xposs = corpus_test.Xposs(maxlen=seq_max_length)
+        xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
+        logging.info("...done.")
 
     logging.info("using model to calculate predictions...")
     y_preds = []
-    p = model.predict([np.array(x_pred) for x_pred in x_preds] + [xposs_cat],
-                      batch_size=batch_size)
+    X_input = [np.array(x_pred) for x_pred in x_preds]
+    if args.pos:
+        X_input += [xposs_cat]
+    p = model.predict(X_input, batch_size=batch_size)
     q = K.argmax(p)
     y_preds = K.eval(q)
     logging.info("...done.")
@@ -681,10 +657,144 @@ def main():
                     print("{}_{}_{},{},{}".format(txt_id, sentence_id,
                                                   tok_id+1, y_pred[tok_id %
                                                                    seq_max_length],
-                                                  sentence[tok_id][0]))
+                                                  sentence[tok_id][0]),
+                         file=args.predicts_fn)
                 if (tok_id+1) % seq_max_length == 0 and tok_id+1 < len(sentence):
                     pred_id += 1
             pred_id += 1
+
+def _parse_args():
+    """
+    Set up argparse parser and return the populated namespace.
+
+    Returns:
+        A populated argparse namespace.
+    """
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=DESCRIPTION, epilog=EPILOG,
+        fromfile_prefix_chars='@')
+
+    parser.add_argument(
+        "-v", "--verbose",
+        action="count", default=0,
+        help="Verbose mode.  Multiple -v options increase the verbosity.  "
+        "The maximum is 2.")
+
+    parser.add_argument(
+        "--train_corpus",
+        dest="corpus_fn",
+        default="../naacl_flp/vuamc_corpus_train.csv",
+        help="Name of csv file with training corpus texts.")
+
+    parser.add_argument(
+        "--train_labels",
+        dest="tokens_tags",
+        default="../naacl_flp/all_pos_tokens.csv",
+        # tokens_tags = "../naacl_flp/verb_tokens.csv"
+        help="Name of csv file with training corpus ids and labels.")
+
+    parser.add_argument(
+        "--test_corpus",
+        dest="corpus_test_fn",
+        default="../naacl_flp/vuamc_corpus_test.csv",
+        help="Name of csv file with testing corpus texts.")
+
+    parser.add_argument(
+        "--test_labels",
+        dest="tokens_test_tags",
+        default="../naacl_flp/all_pos_tokens_test.csv",
+        # tokens_tags = "../naacl_flp/verb_tokens_test.csv"
+        help="Name of csv file with testing corpus ids without labels.")
+
+    parser.add_argument(
+        "--predict",
+        default=False,
+        action="store_true",
+        help="Use full training corpus and predict on the test corpus.  (False)")
+
+    parser.add_argument(
+        "--pos",
+        default=False,
+        action="store_true",
+        help="Use POS-tagger features.  (False)")
+
+    parser.add_argument(
+        "--predictfile",
+        dest="predicts_fn",
+        nargs='?', type=argparse.FileType('w'), default=stdout,
+        help="Write predicted labels to this file.  (stdout)")
+
+    parser.add_argument(
+        "--embeddings",
+        nargs='*', required=True,
+        help="File names of pre-trained FastText embedding .bin files.")
+    #embedding_models.append(
+    #    FastText.load_fasttext_format('../data/bnc2_tt2'))
+    ## embedding_models.append(
+    ##     FastText.load_fasttext_format('../data/wiki.en.bin'))
+    ## embedding_models.append(
+    ##     FastText.load_fasttext_format('../data/ententen13_tt2_1.bin'))
+    #embedding_models.append(
+    #    FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_low_min1_dim50.bin'))
+    #embedding_models.append(
+    #    FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_med_min1_dim50.bin'))
+    #embedding_models.append(
+    #    FastText.load_fasttext_format('../data/NLI_2013/NLI_2013_high_min1_dim50.bin'))
+
+
+    parser.add_argument(
+        "--seq_max_length",
+        default=15, type=int,
+        help="Maximum sequence length.  (15)")
+
+    parser.add_argument(
+        "--evaluate",
+        default=False,
+        action="store_true",
+        help="Evaluate the model with n_splits X-validation.  (False)")
+
+    parser.add_argument(
+        "--evaluatefile",
+        dest="eval_fn",
+        nargs='?', type=argparse.FileType('w'), default=stdout,
+        help="Write x-validation scores this file.  (stdout)")
+
+    parser.add_argument(
+        "--n_splits",
+        default=3, type=int,
+        help="Number of splits for X-validation.  (3)")
+
+    parser.add_argument(
+        "--batch_size",
+        default=32, type=int,
+        help="Batch size for training the network.  (32)")
+
+    parser.add_argument(
+        "--epochs",
+        default=20, type=int,
+        help="Epochs for training the network.  (20)")
+
+    parser.add_argument(
+        "--recurrent_dropout",
+        default=0.25, type=float,
+        help="Dropout value for the RNN layer.  (0.25)")
+
+    parser.add_argument(
+        "--optimizer",
+        default="rmsprop",
+        help="Optimizer for the NN model.  (rmsprop)")
+
+    parser.add_argument(
+        "--metrics",
+        default="categorical_accuracy",
+        help="Function(s) used to judge the performance of the model.  (categorical_accuracy)")
+
+    args = parser.parse_args()
+    log_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    args.log_level = log_levels[min(len(log_levels)-1, args.verbose)]
+
+    return args
 
 if __name__ == "__main__":
     main()
