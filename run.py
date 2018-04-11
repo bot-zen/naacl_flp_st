@@ -584,6 +584,7 @@ def main():
 
             logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
             print(scores[1], file=args.eval_fn)
+            args.eval_fn.flush()
             cvscores.append(scores[1] * 100)
 
 
