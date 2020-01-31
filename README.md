@@ -44,7 +44,7 @@ tokens), Word form \[character
 ngrams](https://embeddings.sketchengine.co.uk/static/models/word/bnc2_tt2.bin)
 and running the application:
 ```
-$ python3 run.py --embeddings wiki.en.bin --evaluate (-v)
+$ python3 run.py --embeddings wiki.en.bin --pos --evaluate (-v)
 ```
 should produce something like:
 ```
@@ -73,7 +73,7 @@ which is only 3-fold CV (as per the app's default) but is on the right track whe
 Using the wiki word embeddings file [Wiki word vectors, Englich](https://fasttext.cc/docs/en/crawl-vectors.html) and running:
 https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.en.zip
 ```
-python3 run.py --embeddings ../data/wiki.en.bin --predict --predictfile wiki_predictions.csv (-v)
+python3 run.py --embeddings ../data/wiki.en.bin --pos --predict --predictfile wiki_predictions.csv (-v)
 ```
 
 # ERRATUM
