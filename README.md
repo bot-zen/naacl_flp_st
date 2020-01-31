@@ -97,8 +97,8 @@ The idea was that it should be much easier to fine-tune a pos tagger for the
 relatively small actual data compared to the 'unlabeled data' encoded
 in the word embeddings.
 
-Also note that we use nltk 
+Also note that we are missing an [NLTK](https://www.nltk.org/) reference:
 ```
  Bird, Steven, Edward Loper and Ewan Klein (2009).
- Natural Language Processing with Python.  O'Reilly Media Inc.
+ Natural Language Processing with Python. O'Reilly Media Inc.
 ```
