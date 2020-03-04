@@ -79,6 +79,7 @@ class Corpus():
         with open(fn) as csvfile:
             csvreader = csv.DictReader(csvfile, delimiter=self.vuamc_delimiter,
                                        quotechar=self.vuamc_quotechar)
+            self.log.debug("Opening file: %s", fn)
             for row in csvreader:
                 txt_id = row['txt_id']
                 sentence_id = row['sentence_id']
@@ -117,6 +118,7 @@ class Corpus():
         with open(fn) as csvfile:
             csvreader = csv.reader(csvfile, delimiter=self.tokens_delimiter,
                                    quotechar=self.tokens_quotechar)
+            self.log.debug("Opening file: %s", fn)
             for row in csvreader:
                 txt_id, sentence_id, token_id = row[0].split('_')
 
@@ -659,7 +661,7 @@ def main():
                                                   tok_id+1, y_pred[tok_id %
                                                                    seq_max_length],
                                                   sentence[tok_id][0]),
-                         file=args.predicts_fn)
+                          file=args.predicts_fn)
                 if (tok_id+1) % seq_max_length == 0 and tok_id+1 < len(sentence):
                     pred_id += 1
             pred_id += 1
@@ -686,39 +688,39 @@ def _parse_args():
         "--train_corpus",
         dest="corpus_fn",
         default="../naacl_flp/vuamc_corpus_train.csv",
-        help="Name of csv file with training corpus texts.")
+        help="Name of csv file with training corpus texts.  (default: %(default)s)")
 
     parser.add_argument(
         "--train_labels",
         dest="tokens_tags",
         default="../naacl_flp/all_pos_tokens.csv",
         # tokens_tags = "../naacl_flp/verb_tokens.csv"
-        help="Name of csv file with training corpus ids and labels.")
+        help="Name of csv file with training corpus ids and labels.  (default: %(default)s)")
 
     parser.add_argument(
         "--test_corpus",
         dest="corpus_test_fn",
         default="../naacl_flp/vuamc_corpus_test.csv",
-        help="Name of csv file with testing corpus texts.")
+        help="Name of csv file with testing corpus texts.  (default: %(default)s)")
 
     parser.add_argument(
         "--test_labels",
         dest="tokens_test_tags",
         default="../naacl_flp/all_pos_tokens_test.csv",
         # tokens_tags = "../naacl_flp/verb_tokens_test.csv"
-        help="Name of csv file with testing corpus ids without labels.")
+        help="Name of csv file with testing corpus ids without labels.  (default: %(default)s)")
 
     parser.add_argument(
         "--predict",
         default=False,
         action="store_true",
-        help="Use full training corpus and predict on the test corpus.  (False)")
+        help="Use full training corpus and predict on the test corpus.  (default: %(default)s)")
 
     parser.add_argument(
         "--pos",
         default=False,
         action="store_true",
-        help="Use POS-tagger features.  (False)")
+        help="Use POS-tagger features.  (default: %(default)s)")
 
     parser.add_argument(
         "--predictfile",
@@ -747,13 +749,13 @@ def _parse_args():
     parser.add_argument(
         "--seq_max_length",
         default=15, type=int,
-        help="Maximum sequence length.  (15)")
+        help="Maximum sequence length.  (default: %(default)s)")
 
     parser.add_argument(
         "--evaluate",
         default=False,
         action="store_true",
-        help="Evaluate the model with n_splits X-validation.  (False)")
+        help="Evaluate the model with n_splits X-validation.  (default: %(default)s)")
 
     parser.add_argument(
         "--evaluatefile",
@@ -764,32 +766,32 @@ def _parse_args():
     parser.add_argument(
         "--n_splits",
         default=3, type=int,
-        help="Number of splits for X-validation.  (3)")
+        help="Number of splits for X-validation.  (default: %(default)s)")
 
     parser.add_argument(
         "--batch_size",
         default=32, type=int,
-        help="Batch size for training the network.  (32)")
+        help="Batch size for training the network.  (default: %(default)s)")
 
     parser.add_argument(
         "--epochs",
         default=20, type=int,
-        help="Epochs for training the network.  (20)")
+        help="Epochs for training the network.  (default: %(default)s)")
 
     parser.add_argument(
         "--recurrent_dropout",
         default=0.25, type=float,
-        help="Dropout value for the RNN layer.  (0.25)")
+        help="Dropout value for the RNN layer.  (default: %(default)s)")
 
     parser.add_argument(
         "--optimizer",
         default="rmsprop",
-        help="Optimizer for the NN model.  (rmsprop)")
+        help="Optimizer for the NN model.  (default: %(default)s)")
 
     parser.add_argument(
         "--metrics",
         default="categorical_accuracy",
-        help="Function(s) used to judge the performance of the model.  (categorical_accuracy)")
+        help="Function(s) used to judge the performance of the model.  (default: %(default)s)")
 
     args = parser.parse_args()
     log_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
