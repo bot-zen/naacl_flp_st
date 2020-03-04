@@ -718,7 +718,7 @@ def _parse_args():
 
     parser.add_argument(
         "--pos",
-        default=False,
+        default=True,
         action="store_true",
         help="Use POS-tagger features.  (default: %(default)s)")
 
