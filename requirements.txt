@@ -2,7 +2,7 @@ bz2file==0.98
 fasttext==0.9.1
 gensim==3.8.1
 Keras==2.1.4
-nltk==3.2.5
+nltk==3.4.5
 numpy==1.14.1
 pandas==0.22.0
 scikit-learn==0.19.1
