@@ -271,64 +271,30 @@ class Utils():
         retval = []
         for tok_id, token in enumerate(toks):
             feat_token = None  # token to use to calculate the feature vector
-            if token in model.wv.vocab:
-                # the easy case: the token is in the model -> use it
-                feat_token = token
-            elif token.lower() in model.wv.vocab:
-                # quite easy case: lowercaps version is in the model -> use it
-                feat_token = token.lower()
-            elif token in ['‘', '’', '—', '…']:
-                # cleaning up some common chars (missing from some models)
-                if token in ['‘', '’']:
-                    subst = "'"
-                elif token == '—':
-                    subst = "-"
-                elif token == '…':
-                    subst = "..."
-
-                if subst in model.wv.vocab:
-                    feat_token = subst
-                    log.debug("Token   : '%s' substituted with '%s' (%d/%d)",
-                              token, feat_token, tok_id, len(toks))
-
-            if not feat_token and not token == Utils.padding_str:
-                # the token is not in the model -> 'guess' the most likely word
-                # given a context_length context, and use this word
-
-                context_toks = []  # +/-context_length tokens that exist in the
-                                   # model
-                pre_toks = [_tok for _tok in toks[:tok_id] if _tok in
-                            model]
-                post_toks = [_tok for _tok in toks[tok_id+1:] if _tok in
-                             model]
-                while len(context_toks) < context_length and (
-                        pre_toks or post_toks):
-                    if pre_toks:
-                        context_toks.insert(0, pre_toks.pop())
-                    if post_toks:
-                        context_toks.append(post_toks.pop(0))
-
-                log.debug("'%s'    : not in model:%s", token, str(model))
-                log.debug("Tokens  : %s", str(toks))
-                log.debug("pre/post: %s | %s", str(pre_toks), str(post_toks))
-                log.debug("Context : %s", str(context_toks))
-
-                if context_toks:
-                    feat_token = model.wv.most_similar(context_toks, topn=1)[0][0]
-                    log.info("Token   : '%s' substituted with '%s' (%d/%d)",
-                             token, feat_token, tok_id, len(toks))
-
             if token == Utils.padding_str:
                 retval.append(model.vector_size * [0])
-            elif feat_token:
-                retval.append(model.wv[feat_token])
             else:
-                # there wasn't enough context to 'guess' a word -> use a new
-                # (stable) feature representation.
-                # this is very unlikely to happen!
+                if token in model.wv.vocab:
+                    # the easy case: the token is in the model -> use it
+                    feat_token = token
+                elif token in ['‘', '’', '—', '…']:
+                    # cleaning up some common chars (missing from some models)
+                    if token in ['‘', '’']:
+                        subst = "'"
+                    elif token == '—':
+                        subst = "-"
+                    elif token == '…':
+                        subst = "..."
+
+                    if subst in model.wv.vocab:
+                        feat_token = subst
+                        log.debug("Token   : '%s' substituted with '%s'", token, feat_token)
+
+                if not feat_token:
+                    feat_token = token.lower()
+                    log.info("Token   : '%s' is now '%s'", token, feat_token)
+
                 retval.append(model.wv[feat_token])
-                log.info("Token   : '%s' substituted with a seeded vector. (%d/%d)",
-                         token, tok_id, len(toks))
         return retval
 
     @staticmethod
@@ -468,8 +434,9 @@ class Utils():
 def main():
     ### PARSE PARAMS and INIT LOGGING
     args = _parse_args()
-    logging_format = "%(funcName)8s(),ln%(lineno)3s: %(message)s"
-    logging.basicConfig(format=logging_format, level=args.log_level)
+    logging_format = "%(asctime)s - %(funcName)8s(),ln%(lineno)3s: %(message)s"
+    logging.basicConfig(format=logging_format, level=args.log_level,
+                        datefmt='%H:%M:%S')
     logging.debug("Command line arguments:%s", args)
 
     from gensim.models.fasttext import load_facebook_model
