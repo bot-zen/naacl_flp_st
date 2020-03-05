@@ -120,7 +120,7 @@ class Corpus():
                                    quotechar=self.tokens_quotechar)
             self.log.debug("Opening file: %s", fn)
             for row in csvreader:
-                txt_id, sentence_id, token_id = row[0].split('_')
+                txt_id, sentence_id, token_id = row[0].split('_')[0:3]
 
                 if self.mode == "train":
                     label = int(row[1])
