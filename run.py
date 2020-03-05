@@ -469,7 +469,7 @@ def main():
     logging.basicConfig(format=logging_format, level=args.log_level)
     logging.debug("Command line arguments:%s", args)
 
-    from gensim.models.wrappers import FastText
+    from gensim.models.fasttext import FastText
 
     from keras import backend as K
     from keras.layers import Masking, LSTM, Dense, TimeDistributed, Bidirectional, concatenate
