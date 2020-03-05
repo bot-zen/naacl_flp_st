@@ -627,7 +627,7 @@ def main():
             if _id % 100 == 0:
                 logging.info("   embedding %d/%d (text %d/%d)...",
                              embed_mod_id+1, len(embedding_models), _id+1,
-                             len(corpus.tokens))
+                             len(corpus_test.tokens))
             for sentence_id in corpus_test.tokens[txt_id]:
                 sentence = corpus_test.sentence(txt_id, sentence_id)
                 x, _ = Corpus.X_y_sentence(sentence=sentence,
