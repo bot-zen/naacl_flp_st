@@ -463,7 +463,11 @@ class Utils():
         return loss
 
 def main():
-    import logging
+    ### PARSE PARAMS and INIT LOGGING
+    args = _parse_args()
+    logging_format = "%(funcName)8s(),ln%(lineno)3s: %(message)s"
+    logging.basicConfig(format=logging_format, level=args.log_level)
+    logging.debug("Command line arguments:%s", args)
 
     from gensim.models.wrappers import FastText
 
@@ -473,13 +477,6 @@ def main():
     from keras.utils import to_categorical
 
     from sklearn.model_selection import KFold
-
-    ### PARSE PARAMS and INIT LOGGING
-    args = _parse_args()
-    logger = logging.getLogger()
-    logging_format = "%(funcName)8s(),ln%(lineno)3s: %(message)s"
-    logging.basicConfig(format=logging_format, level=args.log_level)
-    logging.debug("Command line arguments:%s", args)
 
     ### SET PARAMS
     seed = 42
