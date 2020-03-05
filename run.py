@@ -271,9 +271,12 @@ class Utils():
         retval = []
         for tok_id, token in enumerate(toks):
             feat_token = None  # token to use to calculate the feature vector
-            if token in model:
+            if token in model.wv.vocab:
                 # the easy case: the token is in the model -> use it
                 feat_token = token
+            elif token.lower() in model.wv.vocab:
+                # quite easy case: lowercaps version is in the model -> use it
+                feat_token = token.lower()
             elif token in ['‘', '’', '—', '…']:
                 # cleaning up some common chars (missing from some models)
                 if token in ['‘', '’']:
@@ -283,7 +286,7 @@ class Utils():
                 elif token == '…':
                     subst = "..."
 
-                if subst in model:
+                if subst in model.wv.vocab:
                     feat_token = subst
                     log.debug("Token   : '%s' substituted with '%s' (%d/%d)",
                               token, feat_token, tok_id, len(toks))
@@ -311,19 +314,19 @@ class Utils():
                 log.debug("Context : %s", str(context_toks))
 
                 if context_toks:
-                    feat_token = model.most_similar(context_toks, topn=1)[0][0]
+                    feat_token = model.wv.most_similar(context_toks, topn=1)[0][0]
                     log.info("Token   : '%s' substituted with '%s' (%d/%d)",
                              token, feat_token, tok_id, len(toks))
 
             if token == Utils.padding_str:
                 retval.append(model.vector_size * [0])
             elif feat_token:
-                retval.append(model[feat_token])
+                retval.append(model.wv[feat_token])
             else:
                 # there wasn't enough context to 'guess' a word -> use a new
                 # (stable) feature representation.
                 # this is very unlikely to happen!
-                retval.append(model.seeded_vector(feat_token))
+                retval.append(model.wv[feat_token])
                 log.info("Token   : '%s' substituted with a seeded vector. (%d/%d)",
                          token, tok_id, len(toks))
         return retval
@@ -469,7 +472,7 @@ def main():
     logging.basicConfig(format=logging_format, level=args.log_level)
     logging.debug("Command line arguments:%s", args)
 
-    from gensim.models.fasttext import FastText
+    from gensim.models.fasttext import load_facebook_model
 
     from keras import backend as K
     from keras.layers import Masking, LSTM, Dense, TimeDistributed, Bidirectional, concatenate
@@ -494,7 +497,7 @@ def main():
     ### SET EMBEDDINGS
     embedding_models = []
     for embedding_fn in args.embeddings:
-        embedding_models.append(FastText.load_fasttext_format(embedding_fn))
+        embedding_models.append(load_facebook_model(embedding_fn))
 
     ### EXTRACT FEATURES
     xs = []
