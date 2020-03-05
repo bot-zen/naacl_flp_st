@@ -214,7 +214,10 @@ class Corpus():
         else:
             sentences = [sentence]
 
-        for sent in sentences:
+        for _id, sent in enumerate(sentences):
+            if _id % 100 == 0:
+                self.log.info("Calculating X_y: sentence %d/%d",
+                               _id, len(sentences))
             X, y = Corpus.X_y_sentence(model, sent, maxlen=maxlen)
             retval_X.extend(X)
             retval_y.extend(y)
@@ -282,7 +285,8 @@ class Utils():
 
                 if subst in model:
                     feat_token = subst
-                    log.debug("Token   : '%s' substituted with '%s'", token, feat_token)
+                    log.debug("Token   : '%s' substituted with '%s' (%d/%d)",
+                              token, feat_token, tok_id, len(toks))
 
             if not feat_token and not token == Utils.padding_str:
                 # the token is not in the model -> 'guess' the most likely word
@@ -308,7 +312,8 @@ class Utils():
 
                 if context_toks:
                     feat_token = model.most_similar(context_toks, topn=1)[0][0]
-                    log.info("Token   : '%s' substituted with '%s'", token, feat_token)
+                    log.info("Token   : '%s' substituted with '%s' (%d/%d)",
+                             token, feat_token, tok_id, len(toks))
 
             if token == Utils.padding_str:
                 retval.append(model.vector_size * [0])
@@ -319,7 +324,8 @@ class Utils():
                 # (stable) feature representation.
                 # this is very unlikely to happen!
                 retval.append(model.seeded_vector(feat_token))
-                log.info("Token   : '%s' substituted with a seeded vector.", token)
+                log.info("Token   : '%s' substituted with a seeded vector. (%d/%d)",
+                         token, tok_id, len(toks))
         return retval
 
     @staticmethod
@@ -506,7 +512,7 @@ def main():
 
     loss_weight = np.log((len(np.array(y).flatten())/sum(np.array(y).flatten()))-1)
     loss = Utils.weighted_categorical_crossentropy([1, loss_weight])  # !
-    logging.info("Set loss_weight 1 : {}".format(loss_weight))
+    logging.info("Set loss_weight 1 : %f", loss_weight)
     #loss = "categorical_crossentropy"
     y_cat = to_categorical(y, 2)
     #
@@ -584,13 +590,13 @@ def main():
             # EVALUATE the model
             scores = model.evaluate(X_test, y_cat[test], verbose=0)
 
-            logging.info("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+            logging.info("%s: %.2f%%", model.metrics_names[1], scores[1]*100)
             print(scores[1], file=args.eval_fn)
             args.eval_fn.flush()
             cvscores.append(scores[1] * 100)
 
 
-        logging.info("%.2f\t+/- %.2f" % (np.mean(cvscores), np.std(cvscores)))
+        logging.info("%.2f\t+/- %.2f", np.mean(cvscores), np.std(cvscores))
         print("%.2f\t+/- %.2f" % (np.mean(cvscores), np.std(cvscores)),
               file=args.eval_fn)
         print("\n###", file=args.eval_fn)
@@ -620,8 +626,11 @@ def main():
     x_preds = []
     for embed_mod_id, embed_mod in enumerate(embedding_models):
         x_preds.append([])
-        logging.info("   embedding %d/%d...", embed_mod_id+1, len(embedding_models))
-        for txt_id in corpus_test.tokens:
+        for _id, txt_id in enumerate(corpus_test.tokens):
+            if _id % 100 == 0:
+                logging.info("   embedding %d/%d (text %d/%d)...",
+                             embed_mod_id+1, len(embedding_models), _id+1,
+                             len(corpus.tokens))
             for sentence_id in corpus_test.tokens[txt_id]:
                 sentence = corpus_test.sentence(txt_id, sentence_id)
                 x, _ = Corpus.X_y_sentence(sentence=sentence,
@@ -648,6 +657,7 @@ def main():
     logging.info("...done.")
 
     # OUTPUT predictions
+    logging.info("writing predictions...")
     pred_id = 0
     for txt_id in corpus_test.tokens:
         for sentence_id in corpus_test.tokens[txt_id]:
@@ -665,6 +675,7 @@ def main():
                 if (tok_id+1) % seq_max_length == 0 and tok_id+1 < len(sentence):
                     pred_id += 1
             pred_id += 1
+    logging.info("...done.")
 
 def _parse_args():
     """
