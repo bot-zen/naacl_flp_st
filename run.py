@@ -19,6 +19,14 @@ from nltk import pos_tag
 import numpy as np
 import pandas
 
+from tensorflow import keras
+from tensorflow.keras import backend as k
+from tensorflow.keras.layers import Masking, LSTM, Dense, TimeDistributed, Bidirectional, concatenate
+from tensorflow.keras import Model, Input
+from tensorflow.keras.utils import to_categorical
+import tensorflow as tf
+import tensorflow_addons as tfa
+
 DESCRIPTION = __doc__
 EPILOG = None
 
@@ -369,94 +377,7 @@ class Utils():
             return toks
 
     @staticmethod
-    def f1_score_least_frequent(y_true, y_pred):
-        """
-        Calculate the F1 score of the least frequent label/class in ``y_true`` for
-        ``y_pred``.
-
-        Parameters
-        ----------
-        y_true : array-like of float
-            The true/actual/gold labels for the data.
-        y_pred : array-like of float
-            The predicted/observed labels for the data.
-
-        Returns
-        -------
-        ret_score : float
-            F1 score of the least frequent label.
-
-        from:
-            https://raw.githubusercontent.com/EducationalTestingService/skll/master/skll/metrics.py
-        """
-        from sklearn.metrics import f1_score
-        least_frequent = np.bincount(y_true).argmin()
-        return f1_score(y_true, y_pred, average=None)[least_frequent]
-
-    @staticmethod
-    def get_class_weights(y, smooth_factor=0):
-        """
-        Returns the weights for each class based on the frequencies of the samples
-        :param smooth_factor: factor that smooths extremely uneven weights
-        :param y: list of true labels (the labels must be hashable)
-        :return: dictionary with the weight for each class
-
-        from:
-        https://github.com/keras-team/keras/issues/5116
-
-        Utils.get_class_weights([y for x in y_tr for y in x])
-        """
-        counter = Counter(y)
-
-        if smooth_factor > 0:
-            p = max(counter.values()) * smooth_factor
-            for k in counter.keys():
-                counter[k] += p
-
-        majority = max(counter.values())
-
-        return {cls: float(majority / count) for cls, count in counter.items()}
-
-    @staticmethod
-    def f1(y_true, y_pred):
-        from keras import backend as K
-        def recall(y_true, y_pred):
-            """Recall metric.
-
-            Only computes a batch-wise average of recall.
-
-            Computes the recall, a metric for multi-label classification of
-            how many relevant items are selected.
-            """
-            true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-            possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
-            recall = true_positives / (possible_positives + K.epsilon())
-            return recall
-
-        def precision(y_true, y_pred):
-            """Precision metric.
-
-            Only computes a batch-wise average of precision.
-
-            Computes the precision, a metric for multi-label classification of
-            how many selected items are relevant.
-            """
-            true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-            predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
-            precision = true_positives / (predicted_positives + K.epsilon())
-            return precision
-        precision = precision(y_true, y_pred)
-        recall = recall(y_true, y_pred)
-        return 2*((precision*recall)/(precision+recall))
-
-    """
-    A weighted version of categorical_crossentropy for keras (2.0.6). This lets you apply a weight to unbalanced classes.
-    @url: https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
-    @author: wassname
-    """
-    @staticmethod
     def weighted_categorical_crossentropy(weights):
-        from keras import backend as K
         """
         A weighted version of keras.objectives.categorical_crossentropy
 
@@ -472,22 +393,51 @@ class Utils():
         from:
             https://github.com/keras-team/keras/issues/6261
         """
+        """
+        A weighted version of categorical_crossentropy for keras (2.0.6). This lets you apply a weight to unbalanced classes.
+        @url: https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
+        @author: wassname
+        """
 
-        weights = K.variable(weights)
+        weights = k.variable(weights)
 
         def loss(y_true, y_pred):
             # scale predictions so that the class probas of each sample sum to 1
-            y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+            y_pred /= k.sum(y_pred, axis=-1, keepdims=True)
             # clip to prevent NaN's and Inf's
-            y_pred = K.clip(y_pred, K.epsilon(), 1 - K.epsilon())
+            y_pred = k.clip(y_pred, k.epsilon(), 1 - k.epsilon())
             # calc
-            loss = y_true * K.log(y_pred) * weights
-            loss = -K.sum(loss, -1)
+            loss = y_true * k.log(y_pred) * weights
+            loss = -k.sum(loss, -1)
             return loss
 
         return loss
 
+    @staticmethod
+    def weighted_binary_crossentropy(zero_weight, one_weight):
+        def loss(y_true, y_pred, from_logits=False, label_smoothing=0):  # pylint: disable=missing-docstring
+            from tensorflow.python.framework import ops
+            from tensorflow.python.framework import smart_cond
+            from tensorflow.python.ops import math_ops
+
+            y_pred = ops.convert_to_tensor(y_pred)
+            y_true = math_ops.cast(y_true, y_pred.dtype)
+            label_smoothing = ops.convert_to_tensor(label_smoothing,
+                                                    dtype=k.floatx())
+
+            def _smooth_labels():
+                return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
+
+            y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels, lambda: y_true)
+            bce = k.binary_crossentropy(y_true, y_pred, from_logits=from_logits)
+            weight_vector = y_true * one_weight + (1. - y_true) * zero_weight
+            weighted_bce = k.mean(weight_vector * bce, axis=-1)
+            return weighted_bce
+        return loss
+
 def main():
+    """Main loop."""
+
     ### PARSE PARAMS and INIT LOGGING
     args = _parse_args()
     logging_format = "%(asctime)s - %(funcName)8s(),ln%(lineno)3s: %(message)s"
@@ -496,11 +446,6 @@ def main():
     logging.debug("Command line arguments:%s", args)
 
     from gensim.models.fasttext import load_facebook_model
-
-    from keras import backend as K
-    from keras.layers import Masking, LSTM, Dense, TimeDistributed, Bidirectional, concatenate
-    from keras.models import Model, Input
-    from keras.utils import to_categorical
 
     from sklearn.model_selection import KFold
 
@@ -512,7 +457,20 @@ def main():
     epochs = args.epochs
     recurrent_dropout = args.recurrent_dropout
     optimizer = args.optimizer
-    metrics = args.metrics.split(',')
+
+    #metrics = args.metrics.split(',')
+    metrics = [
+        keras.metrics.TruePositives(name='tp'),
+        keras.metrics.FalsePositives(name='fp'),
+        keras.metrics.TrueNegatives(name='tn'),
+        keras.metrics.FalseNegatives(name='fn'),
+        keras.metrics.BinaryAccuracy(name='accuracy'),
+        keras.metrics.Precision(name='precision'),
+        keras.metrics.Recall(name='recall'),
+        keras.metrics.AUC(name='auc'),
+        tfa.metrics.FBetaScore(name='f1-score', num_classes=2, average="micro",
+                               threshold=0.5)
+    ]
 
     ### SET CORPUS
     corpus = Corpus(args.corpus_fn, args.tokens_tags, args.metadata_fn)
@@ -526,32 +484,64 @@ def main():
     xs = []
     feature_vec_lengths = []
     for embed_mod in embedding_models:
-        x, _ = corpus.X_y(embed_mod, maxlen=seq_max_length)
+        # for 'y' actually only the results from one model would suffice, for
+        # example, from embedding_models[0], but y is calculated in any case,
+        # so using it here is cheaper - rather than later down:
+        # _, y = corpus.X_y(embedding_models[0], maxlen=seq_max_length)
+        x, y = corpus.X_y(embed_mod, maxlen=seq_max_length)
         xs.append(x)
         feature_vec_lengths.append(embed_mod.vector_size)
-    _, y = corpus.X_y(embedding_models[0], maxlen=seq_max_length)
     logging.info(feature_vec_lengths)
 
+    total = len(np.array(y).flatten())
+    pos = sum(np.array(y).flatten())
+    neg = total - pos
+    logging.info("total: %d (pos:%d, neg:%d)", total, pos, neg)
 
-    loss_weight = np.log((len(np.array(y).flatten())/sum(np.array(y).flatten()))-1)
-    loss = Utils.weighted_categorical_crossentropy([1, loss_weight])  # !
-    logging.info("Set loss_weight 1 : %f", loss_weight)
-    #loss = "categorical_crossentropy"
-    y_cat = to_categorical(y, 2)
-    #
-    #loss = "binary_crossentropy"
-    #y_res = np.array(y).reshape(len(y),feature_vec_length,1)
-    #
+    # Set the output layer's bias to reflect the dataset imbalance
+    # https://www.tensorflow.org/tutorials/structured_data/imbalanced_data
+    # initial_bias = np.log([pos/neg])
+    # logging.info("Output weight for loss: %2f", initial_bias)
+    initial_bias = None
+
+    ### Use one-hot encoded categories for binary output (bool,bool)
+    # weight_for_0 = (1 / neg)*(total)/2.0
+    # weight_for_1 = (1 / pos)*(total)/2.0
+    # class_weight = {0: weight_for_0, 1: weight_for_1}
+    # logging.info("Weight for class 0: %2f", weight_for_0)
+    # logging.info("Weight for class 1: %2f", weight_for_1)
+
+    loss_weight = np.log((total/pos)-1)
+    # loss = Utils.weighted_categorical_crossentropy([1, loss_weight])  # !
+    # logging.info("Set loss_weight 1 : %f", loss_weight)
+    # y_cat = to_categorical(y, 2)
+    # loss = "categorical_crossentropy"
+
+    ### Use single binary output (bool)
+    _y = []
+    for epoch in y:
+        _epoch = []
+        for val in epoch:
+            _epoch.append([val])
+        _y.append(_epoch)
+    y_cat = np.array(_y)
+    #loss = 'binary_crossentropy'
+    loss = Utils.weighted_binary_crossentropy(1, loss_weight)
 
     if args.pos:
         logging.info("POS-tagging training corpus and calculating features...")
-        xposs = corpus.Xposs(maxlen=seq_max_length)
-        xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
+        xposs_cat = corpus.Xposs(categorical=True, maxlen=seq_max_length)
         logging.info("...done.")
+    if corpus.metadata:
+        xmetas_cat = corpus.Xmetas(maxlen=seq_max_length)
 
-    def get_model():
+    def get_model(metrics, output_bias=None):
         """ Create and return the model. """
 
+        if output_bias is not None:
+            output_bias = tf.keras.initializers.Constant(output_bias)
+
+        k.clear_session()
         # INPUTS
         inputs = []
         models = []
@@ -590,11 +580,14 @@ def main():
                                    dropout=0,  # !
                                    # dropout=0.1,
                                    # dropout=0.25,
-                                   recurrent_dropout=recurrent_dropout))(model)
+                                   recurrent_dropout=recurrent_dropout,
+                                   implementation=1))(model)
 
         # (unfold LSTM and)
         # one-hot encode binary label
-        outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
+        # outputs = TimeDistributed(Dense(2, activation="softmax"))(model)
+        outputs = TimeDistributed(Dense(1, activation="sigmoid",
+                                        bias_initializer=output_bias))(model)
 
         model = Model(inputs=inputs, outputs=outputs)
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
@@ -604,18 +597,20 @@ def main():
     ###
     # define cross validation tests
     if n_splits > 0 and args.evaluate:
+        logging.info("Training and evaluating corpus with %d folds...", n_splits)
         kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
-        cvscores = []
-        labels_preds = []
-        labels_y = []
+        cvscores = {}
         for train, test in kfold.split(xs[0], y_cat):
-            model = get_model()
+            model = get_model(metrics, initial_bias)
             X_train = [np.array(x)[train] for x in xs]
             X_test = [np.array(x)[test] for x in xs]
             if args.pos:
                 X_train += [xposs_cat[train]]
                 X_test += [xposs_cat[test]]
+            if corpus.metadata:
+                X_train += [xmetas_cat[train]]
+                X_test += [xmetas_cat[test]]
 
             ###
             # TRAIN
@@ -624,20 +619,28 @@ def main():
 
             ###
             # EVALUATE the model
-            scores = model.evaluate(X_test, y_cat[test], verbose=0)
-
-            logging.info("%s: %.2f%%", model.metrics_names[1], scores[1]*100)
-            print(scores[1], file=args.eval_fn)
+            scores = model.evaluate(X_test, y_cat[test], verbose=1)
+            scores_summary = []
+            for _id in range(len(model.metrics_names)):
+                scores_summary.append("%s:%.2f" %(model.metrics_names[_id],
+                                                  scores[_id]))
+                scores_list = cvscores.get(model.metrics_names[_id], [])
+                scores_list.append(scores[_id])
+                cvscores[model.metrics_names[_id]] = scores_list
+            #logging.info("\t".join(scores_summary))
+            print("\t".join(scores_summary), file=args.eval_fn)
             args.eval_fn.flush()
-            cvscores.append(scores[1] * 100)
 
+        cvscores_summary = []
+        for key in cvscores:
+            cvscores_summary.append("%s:%.2f (+/- %.2f)" %(key,
+                                                           np.mean(cvscores[key]),
+                                                           np.std(cvscores[key])))
+        logging.info("\t".join(cvscores_summary))
+        print("\n"+("\n".join(cvscores_summary))+"\n###", file=args.eval_fn)
 
-        logging.info("%.2f\t+/- %.2f", np.mean(cvscores), np.std(cvscores))
-        print("%.2f\t+/- %.2f" % (np.mean(cvscores), np.std(cvscores)),
-              file=args.eval_fn)
-        print("\n###", file=args.eval_fn)
         model.summary(print_fn=lambda x: print(x, file=args.eval_fn))
-        # logging.info(Utils.f1_score_least_frequent(labels_y, labels_preds))
+        logging.info("...done.")
 
     if not args.predict:
         exit(0)
@@ -645,7 +648,7 @@ def main():
     ###
     # Re-init the model
     logging.info("building model...")
-    model = get_model()
+    model = get_model(metrics, initial_bias)
     logging.info("...done.")
 
     logging.info("training model...")
@@ -679,15 +682,14 @@ def main():
         xmetas_cat = corpus_test.Xmetas(maxlen=seq_max_length)
 
     logging.info("using model to calculate predictions...")
-    y_preds = []
     X_input = [np.array(x_pred) for x_pred in x_preds]
     if args.pos:
         X_input += [xposs_cat]
     if corpus_test.metadata:
         X_input += [xmetas_cat]
-    p = model.predict(X_input, batch_size=batch_size)
-    q = K.argmax(p)
-    y_preds = K.eval(q)
+    preds = tf.cast(tf.math.round(model.predict(X_input,
+                                                batch_size=batch_size)),
+                    tf.int32)
     logging.info("...done.")
 
     # OUTPUT predictions
@@ -698,12 +700,12 @@ def main():
             sentence = corpus_test.sentence(txt_id, sentence_id)
             tokens = corpus_test.tokens[txt_id][sentence_id]
             for tok_id, _ in enumerate(sentence):
-                y_pred = y_preds[pred_id]
+                y_pred = preds[pred_id]
                 if tok_id+1 in tokens:
                     # print(pred_id, tok_id, tok_id%seq_max_length)
                     print("{}_{}_{},{},{}".format(txt_id, sentence_id,
                                                   tok_id+1, y_pred[tok_id %
-                                                                   seq_max_length],
+                                                                   seq_max_length][0],
                                                   sentence[tok_id][0]),
                           file=args.predicts_fn)
                 if (tok_id+1) % seq_max_length == 0 and tok_id+1 < len(sentence):
@@ -850,11 +852,6 @@ def _parse_args():
         "--optimizer",
         default="rmsprop",
         help="Optimizer for the NN model.  (default: %(default)s)")
-
-    parser.add_argument(
-        "--metrics",
-        default="categorical_accuracy",
-        help="Function(s) used to judge the performance of the model.  (default: %(default)s)")
 
     args = parser.parse_args()
     log_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
