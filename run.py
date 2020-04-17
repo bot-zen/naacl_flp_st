@@ -663,22 +663,12 @@ def main():
                          args.metadata_fn, mode="test")
 
 
+    ### EXTRACT FEATURES
     logging.info("calculating features from embeddings...")
     x_preds = []
-    for embed_mod_id, embed_mod in enumerate(embedding_models):
-        x_preds.append([])
-        for _id, txt_id in enumerate(corpus_test.tokens):
-            if _id % 100 == 0:
-                logging.info("   embedding %d/%d (text %d/%d)...",
-                             embed_mod_id+1, len(embedding_models), _id+1,
-                             len(corpus_test.tokens))
-            for sentence_id in corpus_test.tokens[txt_id]:
-                sentence = corpus_test.sentence(txt_id, sentence_id)
-                x, _ = Corpus.X_y_sentence(sentence=sentence,
-                                           model=embed_mod,
-                                           maxlen=seq_max_length)
-                x_preds[embed_mod_id].extend(x)
-        logging.info("   ...done.")
+    for embed_mod in embedding_models:
+        x, _ = corpus_test.X_y(embed_mod, maxlen=seq_max_length)
+        x_preds.append(x)
     logging.info("...done.")
 
     if args.pos:
