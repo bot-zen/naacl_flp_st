@@ -327,6 +327,10 @@ class Utils():
                 if token in model.wv.vocab:
                     # the easy case: the token is in the model -> use it
                     feat_token = token
+                elif token.lower() in model.wv.vocab:
+                    # also quite easy: the lower-case version of the token is
+                    # in the model -> use it
+                    feat_token = token.lower()
                 elif token in ['‘', '’', '—', '…']:
                     # cleaning up some common chars (missing from some models)
                     if token in ['‘', '’']:
@@ -340,11 +344,13 @@ class Utils():
                         feat_token = subst
                         log.debug("Token   : '%s' substituted with '%s'", token, feat_token)
 
-                if not feat_token:
-                    feat_token = token.lower()
-                    log.info("Token   : '%s' is now '%s'", token, feat_token)
-
-                retval.append(model.wv[feat_token])
+                if feat_token:
+                    retval.append(model[feat_token])
+                else:
+                    # the token is not in the model -> 'guess' the most likely
+                    # vector representation (summing up char ngrams) and use
+                    # this vector
+                    retval.append(model[token])
         return retval
 
     @staticmethod
