@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Eurac Research and Alpen-Adria University contribution
-to the NAACL-FLP-shared-task 2018.
+Eurac Research / Masaryk University and Alpen-Adria University contribution
+to the NAACL-FLP-shared-task 2018 and 2020.
 
 Author: egon w. stemle <egon.stemle@eurac.edu>
 Contributor: alexander onysko <alexander.onysko@aau.at>
