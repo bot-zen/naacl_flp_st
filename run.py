@@ -718,6 +718,14 @@ def _parse_args():
     Returns:
         A populated argparse namespace.
     """
+    def add_bool_arg(parser, name, default=False, arg_help=None):
+        """Helper function to add --ARG and --no-ARG exclusive options."""
+        group = parser.add_mutually_exclusive_group(required=False)
+        group.add_argument('--' + name, dest=name, action='store_true',
+                           help=arg_help)
+        group.add_argument('--no-' + name, dest=name, action='store_false')
+        parser.set_defaults(**{name:default})
+
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=DESCRIPTION, epilog=EPILOG,
@@ -771,11 +779,11 @@ def _parse_args():
         action="store_true",
         help="Use full training corpus and predict on the test corpus.  (default: %(default)s)")
 
-    parser.add_argument(
-        "--pos",
+    add_bool_arg(
+        parser,
+        'pos',
         default=True,
-        action="store_true",
-        help="Use POS-tagger features.  (default: %(default)s)")
+        arg_help="Use POS-tagger features.  (default: %(default)s)")
 
     parser.add_argument(
         "--predictfile",
