@@ -250,9 +250,9 @@ class Corpus():
             sentences = [sentence]
 
         for _id, sent in enumerate(sentences):
-            if _id % 100 == 0:
+            if _id % 500 == 0:
                 self.log.info("Calculating X_y: sentence %d/%d",
-                               _id, len(sentences))
+                              _id, len(sentences))
             X, y = Corpus.X_y_sentence(model, sent, maxlen=maxlen)
             retval_X.extend(X)
             retval_y.extend(y)
