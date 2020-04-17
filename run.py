@@ -17,6 +17,7 @@ import logging
 from nltk import pos_tag
 
 import numpy as np
+import pandas
 
 DESCRIPTION = __doc__
 EPILOG = None
@@ -51,7 +52,8 @@ class Corpus():
         mode: "train" will read labels from tokens_fn
 
     """
-    def __init__(self, vuamc_fn, tokens_fn, mode="train", sanity_check=False):
+    def __init__(self, vuamc_fn, tokens_fn, metadata_fn=False, mode="train",
+                 sanity_check=False):
         self.log = logging.getLogger(type(self).__name__)
         self.vuamc_delimiter = self.tokens_delimiter = ","
         self.vuamc_quotechar = self.tokens_quotechar = '"'
@@ -64,6 +66,9 @@ class Corpus():
         # load files
         self.vuamc = self._load_vuamc(self.vuamc_fn)
         self.tokens = self._load_tokens(self.tokens_fn)
+        self.metadata = None
+        if metadata_fn:
+            self.metadata = self._load_metadata(metadata_fn)
 
         if sanity_check:
             self._sanity_check()
@@ -145,6 +150,36 @@ class Corpus():
                 data[txt_id][sentence_id][int(token_id)] = label
 
             return data
+
+    def _load_metadata(self, fn):
+        """Load corpus metadata per section/sentence/file.
+
+        For the TOEFL corpus this might look like this:
+            txt_id,txt_length,prompt,l1,proficiency
+            1005892,234,P3,ARA,medium
+            1012679,340,P3,ARA,high
+        """
+        logging.info("Loading metadata from {}...".format(fn))
+        from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+        datacsv = pandas.read_csv(fn)
+        dataset = datacsv.values
+        txt_ids = (dataset[:, 0]).astype(str)
+        # txt_lengths = (dataset[:, 1]).astype(int)
+        txt_cats = (dataset[:, 2:]).astype(str)
+
+        le = LabelEncoder()
+        le_enc = le.fit_transform(txt_ids)
+
+        ohe = OneHotEncoder()
+        ohe_enc = ohe.fit_transform(txt_cats).toarray()
+
+        # data_array = np.hstack((np.reshape(le_enc, (-1, 1)), ohe_enc))
+        data_array = ohe_enc
+        data = {}
+        for row_id, txt_id in enumerate(txt_ids):
+            data[txt_id] = data_array[row_id]
+        logging.info("...done.")
+        return data
 
     def _sanity_check(self):
         """
@@ -231,16 +266,31 @@ class Corpus():
         _, y = self.X_y(model)
         return y
 
-    def Xposs(self, maxlen=None):
+    def Xposs(self, categorical=False, maxlen=None):
         retval = []
         for sent in self.sentences:
             poss = [tag[1] for tag in pos_tag([tok[0] for tok in sent])]
             sentence_poss_pads = Utils.pad_toks(poss,
                                                 value=0,
                                                 maxlen=maxlen)
-            for tmp_id, sentence_poss_pad in enumerate(sentence_poss_pads):
+            for _id, sentence_poss_pad in enumerate(sentence_poss_pads):
                 retval.append(Utils.poss2feat(sentence_poss_pad))
-        return np.array(retval)
+        retval = np.array(retval)
+        if categorical:
+            retval = to_categorical(retval, len(Utils.poss)+2)
+        return retval
+
+    def Xmetas(self, maxlen=None):
+        retval = []
+        for txt_id in self.tokens.keys():
+            for sentence_id in self.tokens[txt_id]:
+                metas = [self.metadata[txt_id]] * len(self.sentence(txt_id,
+                                                                    sentence_id))
+                metas_pads = Utils.pad_toks(
+                    metas, value=np.array([0] * len(self.metadata[txt_id])),
+                    maxlen=maxlen)
+                retval.extend(metas_pads)
+        return np.array(retval).astype(np.float32)
 
 class Utils():
     """ Utility and helper functions. """
@@ -459,7 +509,7 @@ def main():
     metrics = args.metrics.split(',')
 
     ### SET CORPUS
-    corpus = Corpus(args.corpus_fn, args.tokens_tags)
+    corpus = Corpus(args.corpus_fn, args.tokens_tags, args.metadata_fn)
 
     ### SET EMBEDDINGS
     embedding_models = []
@@ -504,11 +554,24 @@ def main():
                 Input(shape=(seq_max_length, feature_vec_lengths[embed_mod_id],)))
 
             models.append(
-                Masking(mask_value=[0]*feature_vec_lengths[embed_mod_id])(inputs[-1]))
+                Masking(mask_value=0.)(inputs[-1])
+            )
 
         if args.pos:
-            inputs.append(Input(shape=(seq_max_length, len(Utils.poss)+2,)))
-            models.append(Masking(mask_value=[0]*(len(Utils.poss)+2))(inputs[-1]))
+            inputs.append(
+                Input(shape=(seq_max_length, len(xposs_cat[0][0]),))
+            )
+            models.append(
+                Masking(mask_value=0.)(inputs[-1])
+            )
+        if corpus.metadata:
+            inputs.append(
+                Input(shape=(seq_max_length, len(xmetas_cat[0][0]),))
+            )
+            models.append(
+                Masking(mask_value=0.)(inputs[-1])
+            )
+
 
         # Combinde INPUTS (including masks)
         if len(models) > 1:
@@ -583,11 +646,16 @@ def main():
     X_input = [np.array(x) for x in xs]
     if args.pos:
         X_input += [xposs_cat]
-    model.fit(X_input, y_cat, batch_size=batch_size, epochs=epochs, verbose=0)
+    if corpus.metadata:
+        X_input += [xmetas_cat]
+
+    model.fit(X_input, y_cat, batch_size=batch_size, epochs=epochs, verbose=1)
     logging.info("...done.")
 
     ### SET CORPUS
-    corpus_test = Corpus(args.corpus_test_fn, args.tokens_test_tags, mode="test")
+    corpus_test = Corpus(args.corpus_test_fn, args.tokens_test_tags,
+                         args.metadata_fn, mode="test")
+
 
     logging.info("calculating features from embeddings...")
     x_preds = []
@@ -609,15 +677,18 @@ def main():
 
     if args.pos:
         logging.info("Tagging testing corpus and calculating features...")
-        xposs = corpus_test.Xposs(maxlen=seq_max_length)
-        xposs_cat = to_categorical(xposs, len(Utils.poss)+2)
+        xposs_cat = corpus_test.Xposs(categorical=True, maxlen=seq_max_length)
         logging.info("...done.")
+    if corpus.metadata:
+        xmetas_cat = corpus_test.Xmetas(maxlen=seq_max_length)
 
     logging.info("using model to calculate predictions...")
     y_preds = []
     X_input = [np.array(x_pred) for x_pred in x_preds]
     if args.pos:
         X_input += [xposs_cat]
+    if corpus_test.metadata:
+        X_input += [xmetas_cat]
     p = model.predict(X_input, batch_size=batch_size)
     q = K.argmax(p)
     y_preds = K.eval(q)
@@ -687,6 +758,16 @@ def _parse_args():
         default="../naacl_flp/all_pos_tokens_test.csv",
         # tokens_tags = "../naacl_flp/verb_tokens_test.csv"
         help="Name of csv file with testing corpus ids without labels.  (default: %(default)s)")
+
+    # for the TOEFL data this looks like this:
+    # text_id, tokens, prompt, proficiency
+    # 1005892,9,234,P3,ARA,medium
+    # 1012679,25,340,P3,ARA,high
+    parser.add_argument(
+        "--metadata",
+        dest="metadata_fn",
+        default=False,
+        help="Name of csv file with testing and training corpus metadata-per-text/-per-category.  (default: %(default)s)")
 
     parser.add_argument(
         "--predict",
