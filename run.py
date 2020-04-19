@@ -324,6 +324,10 @@ class Utils():
     def toks2feat(toks, model, context_length=10):
         """
         Return the feature vectors of a list of tokens for a model.
+
+        Make something of the subword information encoded in FastText word
+        representations:
+        https://radimrehurek.com/gensim/auto_examples/tutorials/run_fasttext.html
         """
         log = logging.getLogger(__name__)
         retval = []
@@ -458,7 +462,6 @@ def main():
     recurrent_dropout = args.recurrent_dropout
     optimizer = args.optimizer
 
-    #metrics = args.metrics.split(',')
     metrics = [
         keras.metrics.TruePositives(name='tp'),
         keras.metrics.FalsePositives(name='fp'),
