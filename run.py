@@ -601,7 +601,7 @@ def main():
     # define cross validation tests
     if n_splits > 0 and args.evaluate:
         logging.info("Training and evaluating corpus with %d folds...", n_splits)
-        kfold = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        kfold = KFold(n_splits=n_splits, shuffle=args.shuffle, random_state=seed)
 
         cvscores = {}
         for train, test in kfold.split(xs[0], y_cat):
@@ -618,7 +618,8 @@ def main():
             ###
             # TRAIN
             model.fit(X_train, y_cat[train],
-                      batch_size=batch_size, epochs=epochs, verbose=0)
+                      batch_size=batch_size, epochs=epochs,
+                      shuffle=args.shuffle, verbose=0)
 
             ###
             # EVALUATE the model
@@ -661,7 +662,8 @@ def main():
     if corpus.metadata:
         X_input += [xmetas_cat]
 
-    model.fit(X_input, y_cat, batch_size=batch_size, epochs=epochs, verbose=1)
+    model.fit(X_input, y_cat, batch_size=batch_size, epochs=epochs,
+              shuffle=True, verbose=1)
     logging.info("...done.")
 
     ### SET CORPUS
@@ -768,34 +770,6 @@ def _parse_args():
         # tokens_tags = "../naacl_flp/verb_tokens_test.csv"
         help="Name of csv file with testing corpus ids without labels.  (default: %(default)s)")
 
-    # for the TOEFL data this looks like this:
-    # text_id, tokens, prompt, proficiency
-    # 1005892,9,234,P3,ARA,medium
-    # 1012679,25,340,P3,ARA,high
-    parser.add_argument(
-        "--metadata",
-        dest="metadata_fn",
-        default=False,
-        help="Name of csv file with testing and training corpus metadata-per-text/-per-category.  (default: %(default)s)")
-
-    parser.add_argument(
-        "--predict",
-        default=False,
-        action="store_true",
-        help="Use full training corpus and predict on the test corpus.  (default: %(default)s)")
-
-    add_bool_arg(
-        parser,
-        'pos',
-        default=True,
-        arg_help="Use POS-tagger features.  (default: %(default)s)")
-
-    parser.add_argument(
-        "--predictfile",
-        dest="predicts_fn",
-        nargs='?', type=argparse.FileType('w'), default=stdout,
-        help="Write predicted labels to this file.  (stdout)")
-
     parser.add_argument(
         "--embeddings",
         nargs='*', required=True,
@@ -815,9 +789,16 @@ def _parse_args():
 
 
     parser.add_argument(
-        "--seq_max_length",
-        default=15, type=int,
-        help="Maximum sequence length.  (default: %(default)s)")
+        "--predict",
+        default=False,
+        action="store_true",
+        help="Use full training corpus and predict on the test corpus.  (default: %(default)s)")
+
+    parser.add_argument(
+        "--predictfile",
+        dest="predicts_fn",
+        nargs='?', type=argparse.FileType('w'), default=stdout,
+        help="Write predicted labels to this file.  (stdout)")
 
     parser.add_argument(
         "--evaluate",
@@ -836,6 +817,27 @@ def _parse_args():
         default=3, type=int,
         help="Number of splits for X-validation.  (default: %(default)s)")
 
+    # for the TOEFL data this looks like this:
+    # text_id, tokens, prompt, proficiency
+    # 1005892,9,234,P3,ARA,medium
+    # 1012679,25,340,P3,ARA,high
+    parser.add_argument(
+        "--metadata",
+        dest="metadata_fn",
+        default=False,
+        help="Name of csv file with testing and training corpus metadata-per-text/-per-category.  (default: %(default)s)")
+
+    add_bool_arg(
+        parser,
+        'pos',
+        default=True,
+        arg_help="Use POS-tagger features.  (default: %(default)s)")
+
+    parser.add_argument(
+        "--seq_max_length",
+        default=15, type=int,
+        help="Maximum sequence length.  (default: %(default)s)")
+
     parser.add_argument(
         "--batch_size",
         default=32, type=int,
@@ -845,6 +847,12 @@ def _parse_args():
         "--epochs",
         default=20, type=int,
         help="Epochs for training the network.  (default: %(default)s)")
+
+    add_bool_arg(
+        parser,
+        'shuffle',
+        default=True,
+        arg_help="Use shuffle=VAL for KFold() and model.fit().  (default: %(default)s)")
 
     parser.add_argument(
         "--recurrent_dropout",
