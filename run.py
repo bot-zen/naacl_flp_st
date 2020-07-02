@@ -7,7 +7,7 @@ Author: egon w. stemle <egon.stemle@eurac.edu>
 Contributor: alexander onysko <alexander.onysko@aau.at>
 """
 
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 from sys import exit, stdout
 
 import argparse
