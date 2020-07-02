@@ -167,22 +167,47 @@ class Corpus():
             1005892,234,P3,ARA,medium
             1012679,340,P3,ARA,high
         """
-        logging.info("Loading metadata from {}...".format(fn))
-        from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+        logging.info("Loading metadata from %s...", fn)
+        from sklearn.preprocessing import LabelEncoder, OneHotEncoder, Normalizer
         datacsv = pandas.read_csv(fn)
         dataset = datacsv.values
         txt_ids = (dataset[:, 0]).astype(str)
-        # txt_lengths = (dataset[:, 1]).astype(int)
+        txt_lengths = (dataset[:, 1]).astype(int)
+        # cats: prompt,l1,proficiency
         txt_cats = (dataset[:, 2:]).astype(str)
+        # cat: prompt
+        #txt_cats = (dataset[:, 2:3]).astype(str)
+        # cat: l1
+        #txt_cats = (dataset[:, 3:4]).astype(str)
+        # cat: proficiency
+        #txt_cats = (dataset[:, 4:5]).astype(str)
 
         le = LabelEncoder()
         le_enc = le.fit_transform(txt_ids)
 
+        nrml = Normalizer()
+        nrml_enc = nrml.fit_transform(np.reshape(txt_lengths, (-1, 1)))
+
         ohe = OneHotEncoder()
         ohe_enc = ohe.fit_transform(txt_cats).toarray()
 
-        # data_array = np.hstack((np.reshape(le_enc, (-1, 1)), ohe_enc))
+        # meta_all
+        #data_array = np.hstack((np.reshape(le_enc, (-1, 1)), nrml_enc, ohe_enc))
+        # meta_ids: txt_ids
+        #data_array = np.reshape(le_enc, (-1, 1))
+        # meta_len: txt_lengths
+        #data_array = nrml_enc
+        # meta_cats: prompt,l1,proficiency
         data_array = ohe_enc
+        # meta_cat_prom: prompt
+        #data_array = ohe_enc
+        # meta_cat_l1: l1
+        #data_array = ohe_enc
+        # meta_cat_prof: proficiency
+        #data_array = ohe_enc
+
+        # meta: originally ohe_enc
+        # data_array = ohe_enc
         data = {}
         for row_id, txt_id in enumerate(txt_ids):
             data[txt_id] = data_array[row_id]
@@ -516,7 +541,7 @@ def main():
 
     loss_weight = np.log((total/pos)-1)
     # loss = Utils.weighted_categorical_crossentropy([1, loss_weight])  # !
-    # logging.info("Set loss_weight 1 : %f", loss_weight)
+    logging.info("Set loss_weight 1 : %f", loss_weight)
     # y_cat = to_categorical(y, 2)
     # loss = "categorical_crossentropy"
 
