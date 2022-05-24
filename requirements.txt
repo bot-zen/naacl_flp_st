@@ -7,5 +7,5 @@ numpy==1.18.2
 pandas==0.22.0
 scikit-learn==0.22.2.post1
 scipy==1.4.1
-tensorflow==2.1.2
+tensorflow==2.6.4
 tensorflow-addons==0.9.1
