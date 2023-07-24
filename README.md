@@ -1,7 +1,12 @@
 # README
 
-**Author:** egon w. stemle <egon.stemle@eurac.edu>
+**Author:** egon w. stemle <egon.stemle@eurac.edu>  
 **Contributor:** alexander onysko <alexander.onysko@aau.at>
+
+---
+The system was re-used in the shared task on metaphor identification on VU Amsterdam Metaphor Corpus and on a subset of the TOEFL Native Language Identification Corpus (as a baseline system). This shared task was conducted as apart of the [ACL 2020 Workshop on Processing Figurative Language](https://aclanthology.org/2020.figlang-1.3/).
+
+---
 
 This is the [Eurac Research](http://www.eurac.edu/linguistics) and [Alpen-Adria
 University](https://www.aau.at/en/english/) system that participated in the
